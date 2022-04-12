@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Trackable RESources (TRES)</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/tres.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1>Trackable RESources (TRES)</h1>
+
+<p>A TRES is a resource that can be tracked for usage or used to enforce
+  limits against.  A TRES is a combination of a Type and a Name.
+  Types are predefined.
+
+Current TRES Types are:
+</p>
+<ul>
+<li>BB (burst buffers)</li>
+<li>Billing</li>
+<li>CPU</li>
+<li>Energy</li>
+<li>FS (filesystem)</li>
+<li>GRES</li>
+<li>IC (interconnect)</li>
+<li>License</li>
+<li>Mem (Memory)</li>
+<li>Node</li>
+<li>Pages</li>
+<li>VMem (Virtual Memory/Size)</li>
+</ul>
+
+<p>
+  The Billing TRES is calculated from a partition's TRESBillingWeights. Though
+  TRES weights on a partition may be defined as doubles, the Billing TRES values
+  for a job are stored as integers. This is not the case when calculating a
+  job's fairshare where the value is treated as a double.
+</p>
+
+<p>
+  Valid 'FS' TRES are 'disk' (local disk) and 'lustre'.  These are primarily
+  there for reporting usage, not limiting access.
+</p>
+
+<p>
+  Valid 'IC' TRES is 'ofed'.  These are primarily there for reporting usage, not
+  limiting access.
+</p>
+
+<h2>slurm.conf settings</h2>
+<ul>
+<li><b>AccountingStorageTRES</b>
+<p>Used to define which TRES are
+  to be tracked on the system. By default Billing, CPU, Energy, Memory, Node,
+  FS/Disk, Pages and VMem are tracked. These default TRES cannot be disabled,
+  but only appended to. The following example:
+</p>
+  <pre>AccountingStorageTRES=gres/craynetwork,license/iop1,bb/cray</pre>
+<p>
+  will track billing, cpu, energy, memory, nodes, fs/disk, pages and vmem along
+  with a GRES called craynetwork as well as a license called iop1. It will
+  also track usage on a Cray burst buffer. Whenever these resources are used on
+  the cluster they are recorded. TRES are automatically set up in the database
+  on the start of the slurmctld.
+</p>
+
+<p> The TRES that require associated names are BB, GRES, and
+  License.  As seen in the above example, GRES and License are typically
+  different on each system.  The BB TRES is named the same as
+  the burst buffer plugin being used. In the above example we are using the
+  <i>Cray</i> burst buffer plugin.
+</p>
+
+<p> When including a specific GRES with a subtype, it is also recommended to
+include its generic type, otherwise a request with only the generic one won't
+be accounted for. For example, if we want to account for gres/gpu:tesla,
+we would also include gres/gpu for accounting gpus in requests like
+<i>srun --gres=gpu:1</i>.
+</p>
+<pre>AccountingStorageTRES=gres/gpu,gres/gpu:tesla</pre>
+</li>
+
+<li><b>PriorityWeightTRES</b>
+<p>A comma separated list of TRES Types and weights that sets the
+  degree that each TRES Type contributes to the job's priority.</p>
+<pre>PriorityWeightTRES=CPU=1000,Mem=2000,GRES/gpu=3000</pre>
+
+<p>Applicable only if PriorityType=priority/multifactor and if
+AccountingStorageTRES is configured with each TRES Type.
+The default values are 0.</p>
+
+<p>The Billing TRES is not available for priority calculations because the
+number isn't generated until after the job has been allocated resources &mdash;
+since the number can change for different partitions.<p>
+</li>
+
+<li><b>TRESBillingWeights</b>
+<p>For each partition this option is used to define the billing
+  weights of each TRES type that will be used in calculating the usage
+  of a job.
+</p>
+
+<p>Billing weights are specified as a comma-separated list of
+<i>TRES=Weight</i> pairs.
+</p>
+
+<p>Any TRES Type is available for billing. Note that the base unit for memory
+and burst buffers is megabytes.
+</p>
+
+<p>By default the billing of TRES is calculated as the sum of all TRES types
+multiplied by their corresponding billing weight.
+</p>
+
+<p>The weighted amount of a resource can be adjusted by adding a suffix of
+K,M,G,T or P after the billing weight. For example, a memory weight of "mem=.25"
+on a job allocated 8GB will be billed 2048 (8192MB *.25) units. A memory weight
+of "mem=.25G" on the same job will be billed 2 (8192MB * (.25/1024)) units.
+</p>
+
+<p>When a job is allocated 1 CPU and 8 GB of memory on a partition configured
+with:
+</p>
+
+<pre>TRESBillingWeights="CPU=1.0,Mem=0.25G,GRES/gpu=2.0"</pre>
+
+<p>the billable TRES will be:
+</p>
+<pre>(1*1.0) + (8*0.25) + (0*2.0) = 3.0</pre>
+
+<p>If <i>PriorityFlags=MAX_TRES</i> is configured, the billable TRES is
+  calculated as the MAX of individual TRES' on a node (e.g. cpus, mem,
+  gres) plus the sum of all global TRES' (e.g. licenses). Using the
+  same example above, the billable TRES will be:
+</p>
+<pre>MAX(1*1.0, 8*0.25) + (0*2.0) = 2.0</pre>
+
+<p>If TRESBillingWeights is not defined then the job is billed against the total
+number of allocated CPUs.
+</p>
+
+<p><b>NOTE:</b> TRESBillingWeights is only used when calculating fairshare and
+doesn't affect job priority directly as it is currently not used for the size of
+the job. If you want TRES' to play a role in the job's priority then refer to
+the PriorityWeightTRES option.
+</p>
+
+<p><b>NOTE:</b> As with PriorityWeightTRES only TRES defined in
+  AccountingStorageTRES are available for TRESBillingWeights.
+</p>
+
+<p><b>NOTE:</b> Jobs can be limited based off of the calculated TRES billing
+value. See <a href="resource_limits.html">Resource Limits</a> documentation for
+more information.
+</p>
+
+<p><b>NOTE:</b> If a Billing TRES is defined as a weight, it is ignored.</p>
+</li>
+
+</ul>
+
+<h2>sacct</h2>
+<p>sacct can be used to view the TRES of each job by adding "tres" to the
+  --format option.
+</p>
+
+<h2>sacctmgr</h2>
+<p>sacctmgr is used to view the various TRES available globally in the
+  system. <i>sacctmgr show tres</i> will do this.
+</p>
+
+<h2>sreport</h2>
+<p>sreport reports on different TRES. Simply using the comma separated input
+  option <i>--tres=</i> will have sreport generate reports available
+  for the requested TRES types.  More information about these reports
+  can be found on the <a href="sreport.html">sreport manpage</a>.
+</p>
+<p>
+  In <i>sreport</i>, the "Reported" Billing TRES is calculated from the largest
+  Billing TRES of each node multiplied by the time frame. For example, if a node
+  is part of multiple partitions and each has a different TRESBillingWeights
+  defined the Billing TRES for the node will be the highest of the partitions.
+  If TRESBillingWeights is not defined on any partition for a node then the
+  Billing TRES will be equal to the number of CPUs on the node.
+</p>
+<p style="text-align:center;">Last modified 1 May 2018</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

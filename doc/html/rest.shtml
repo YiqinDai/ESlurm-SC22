@@ -1,0 +1,303 @@
+<!--#include virtual="header.txt"-->
+
+<h1>Slurm REST API</h1>
+
+<p>Slurm provides a
+	<a href="https://en.wikipedia.org/wiki/Representational_state_transfer">
+		REST API
+	</a> daemon named slurmrestd. This daemon is designed to allow clients to
+	communicate with Slurm via a REST API (in addition to the command line
+	interface (CLI) or C API).
+</p>
+
+<h2>Prerequisites</h2>
+<p>slurmrestd requires additional libraries for compilation:</p>
+<ul>
+	<li><a href="download.html#httpparser">HTTP Parser</a> (>= v2.6.0)</li>
+	<li><a href="download.html#yaml">LibYAML</a> (optional)</li>
+	<li><a href="download.html#json">JSON-C</a></li>
+	<li><a href="download.html#jwt">JWT Authentication</a> (optional)</li>
+</ul>
+
+<!-- <h2>Usage Models</h2>
+<p>Slurmrestd can be run by the system as the new unprivileged user and use JWT tokens from users for all authentication.
+<p>Slurmrestd can be run by the system as the SlurmUser, in which case, it can
+assume the identity of any user on the system. Slurmrestd can also be run
+by normal users to allow them to communicate with Slurm via REST commands directly
+as their own user. It is <b>not</b> suggested normal users run a daemon but instead
+use the inet service mode and pipe their input directly into Slurmrestd to avoid any
+unnecessary security issues involved with hosting a listening daemon on a shared
+system.</p>
+-->
+
+<h2>Stateless</h2>
+<p>Slurmrestd is stateless as it does not cache or save any state between
+requests. Each request is handled in a thread and then all of that state is
+discarded. Any request to slurmrestd is completely synchronous with the
+Slurm controller (slurmctld or slurmdbd) and is only considered complete once
+the HTTP response code has been sent to the client. Slurmrestd will hold a
+client connection open while processing a request. Slurm database commands are
+commited at the end of every request, on the success of all API calls in the
+request.</p>
+<p>Sites are strongly encouraged to setup a caching proxy between slurmrestd
+and clients to avoid having clients repeatedly call queries, causing usage to
+be higher than needed (and causing lock contention) on the controller.</p>
+
+<h2>Run modes</h2>
+Slurmrestd currently supports two run modes: inet service mode and listening
+mode.
+
+<h3>Inet Service Mode</h3>
+<p>The Slurmrestd daemon acts as an
+<a href="https://en.wikipedia.org/wiki/Inetd">
+	Inet Service
+</a> treating STDIN and STDOUT as the client. This mode allows clients to use
+inetd, xinetd, or systemd socket activated services and avoid the need to run a
+daemon on the host at all times. This mode creates an instance for each client
+and does not support reusing the same instance for different clients.</p>
+
+<h3>Listening Mode</h3>
+<p>The Slurmrestd daemon acts as a full UNIX service and continuously listens
+for new TCP connections. Each connection is independently authenticated.</p>
+
+<h2>Configuration</h2>
+slurmrestd can be configured either by environment variables or command line
+arguments. Please see the <b>doc/man/man1/slurmrestd.1</b> man page for details.
+
+<h2>IPv6 Support</h2>
+<p>Slurmrestd supports IPv6 clients. On dual stack systems,
+it will likely provide the source IP as an
+<a href="https://en.wikipedia.org/wiki/IPv6#IPv4-mapped_IPv6_addresses">
+	IPv6 IP for IPv4 clients
+</a>. Slurmrestd must still be able to talk to slurmctld and slurmdbd via
+IPv4.</p>
+
+<h2>OpenAPI Specification (OAS)</h2>
+<p>Slurmrestd is compliant with
+	<a href="https://github.com/OAI/OpenAPI-Specification/blob/master/versions/3.0.2.md">
+		OpenAPI 3.0.2
+	</a>.
+	The OAS can be viewed at the following URLs:
+</p>
+<ul>
+	<li>/openapi.json</li>
+	<li>/openapi.yaml</li>
+	<li>/openapi/v3</li>
+</ul>
+<p>The OAS is designed to be the primary documentation for the request methods.
+There are several third party tools that automatically generate documentation
+against the OAS output listed by
+<a href="https://openapi.tools/">openapi.tools.</a></p>
+<p>
+	To view the currently generated API reference:
+	<a href="rest_api.html">Slurm REST API Reference</a>
+</p>
+
+<h2>Plugins</h2>
+<p>As of Slurm 20.11, the REST API uses plugins for authentication and
+generating content. These plugins can be optionality listed or selected via
+command line arguments as described in the <a href="slurmrestd.html">
+slurmrestd</a> documentation.</p>
+
+<h3>Plugin life cycle</h3>
+<p>Plugins provided with Slurm in any release are considered supported by that
+release. Due to the nature of the plugins, one plugin can be supported accross
+multiple Slurm releases to ensure (limited) forward client compatibility. As
+the slurmrestd plugins are relatively new, we are currently only explicitly
+deprecating plugins and expect any plugin not marked for deprecation to
+continue to exist in the next Slurm release. When a plugin is marked for
+removal in the next major Slurm release, the OpenAPI specification dictates
+that the given plugin will have all of the paths tagged with
+<pre>"deprecated": "true"</pre></p>
+
+<p>Sites are <b>always</b> encouraged to use the latest stable plugin version
+available for code development. There is <b>no</b> guarantee of compatibility
+between different versions of the same plugin with clients. Clients should
+always make sure to validate their code when migrating to newer versions of
+plugins. Plugin versions will always be included in the path for every method
+provided by a given plugin to ensure no two plugins will provide the same
+path.</p>
+
+<p>As the plugins utilize the Slurm API internally, plugins that existed in
+previous versions of Slurm should continue to be able to communicate with the
+two previous versions of Slurm, similar to other components of Slurm. Newer
+plugins may have required RPC changes which will exclude them from working with
+previous Slurm versions. For instance, the openapi/dbv0.0.36 plugin will not be
+able to communicate with any slurmdbd servers prior to the slurm-20.11
+release.</p>
+
+<p>As with all other plugins in Slurm, sites are more than welcome to write
+their own plugins and are suggested to submit them as code contributions via
+<a href="https://bugs.schedmd.com/">bugzilla</a>, tagged as a contribution.
+The plugin API provided may change between releases which could cause site
+specific plugins to break.</p>
+
+<h2>Security</h2>
+<p>The Slurm REST API is written to provide the necessary functionality for
+clients to control Slurm using REST commands. It is <b>not</b> designed to be
+directly internet facing.  Only unencrypted and uncompressed HTTP
+communications are supported. Slurmrestd also has no protection against man in
+the middle or replay attacks. Slurmrestd should only be placed in a trusted
+network that will communicate with a trusted client.</p>
+
+<h2>JSON Web Token (JWT) Authentication</h2>
+<p>slurmrestd supports using <a href=jwt.html>JWT to authenticate users</a>.
+JWT can be used to authenticate user over REST protocol.
+<ul>
+	<li>User Name Header: X-SLURM-USER-NAME</li>
+	<li>JWT Header: X-SLURM-USER-TOKEN</li>
+</ul>
+SlurmUser or root can provide alternative user names to act as a proxy for the
+given user. While using JWT authentication, slurmrestd should be run as a
+unique, <b>unprivileged</b> user and group. Slurmrestd should be provided an
+empty SLURM_JWT environment variable at startup to activate JWT authentication.
+This will allow users to provide their own JWT tokens while authenticating to
+the proxy.</p>
+<p>When using JWT, it is important that <u>AuthAltTypes=auth/jwt</u> be
+configured in your slurm.conf for slurmrestd.</p>
+
+<h2>Local Authentication</h2>
+<p>slurmrestd supports using UNIX domain sockets to have the kernel
+authenticate local users. slurmrestd must be run as SlurmUser or root to allow
+multiple different users at the same time but it is not required if users wish to run
+as only themselves.
+Slurmrestd must be located in the Munge security domain in order to function
+and communicate with Slurm in local authentication mode.
+</p>
+
+<!--
+<h2>Authenticating Proxy</h2>
+<p>If (relatively) untrusted users are going to be allowed to talk to the REST
+API, then they must be authenticated. There are a whole world of
+authentications that a site could choose from at any one time. This
+functionality is explicitly not provided in Slurmrestd itself but instead is
+expected to be provided by an authenticating proxy and relay.</p>
+
+<h2>Authenticating Relay</h2>
+<p>An authenticating relay will act as the intermediary between Slurmrestd and
+any clients. The proxy will accept REST API requests, process them and then
+replicate them to the Slurm REST daemon directly as a trusted request.
+The relay will have the ability to modify or apply site rules to user requests as
+it processes each one before passing it along. This allows the most flexibility
+for sites but will require coding a system to relay and adds latency. Some example
+third party frameworks already exist and can be modified for this purpose:</p>
+<ul>
+	<li><a href="https://github.com/relayphp/Relay.Relay">PHP Relay</a></li>
+	<li><a href="https://www.npmjs.com/package/node-relay">NodeJS Relay</a></li>
+	<li><a href="https://github.com/shingetsu-gou/http-relay">Go http-relay</a></li>
+</ul>
+
+<h4>Authentication</h4>
+<p>An authenticating proxy will act as the authentication authority but proxy all
+user requests to Slurmrestd without inspection or modification. This allows a site
+to implement authentication but avoids the latency hit of processing every request. It
+is also the (lightly) preferred route as a relatively popular architecture and is
+already supported by <a href="https://www.nginx.com/">NGiNX</a>.
+
+<h5>Example Simple Authenticating Proxy</h5>
+<p>An example is provided of how to potentially setup a <b>very</b> simple
+authenticating proxy. This example provides a single test user that is harded
+coded to the Unix ID 1000. This example is provided to show the general setup of
+getting NGINX as an authenticating proxy but not to implment site specific
+authentication. The example uses PHP sessions to created a trusted cookie on the
+client connection but does not expose the API key or user id to the user or allow
+them to directly modify it. NGINX enforces the requirement that the client be
+authenticated and will not pass along any requests until authenticated.</p>
+
+<h6>Setup:</h6>
+<p>The example assumes that Slurmrestd is running on the localhost on port 9999.
+The example also assumes that user 1000 exists and that the Slurm API key is "test".
+The example is a dockerfile along with the required files to run. The docker image
+is based on Alpine Linux and should run on any x86 machine unmodified. The running
+user must be able to run docker commands.</p>
+<p>The sample has the following files:</p>
+<ul>
+	<li>auth.php: PHP code to request user name and password. It will then start a
+	PHP session and set the user id.</li>
+	<li>Dockerfile: Alpine linux image based build procedure. It will install NGiNX
+	and PHP and configure them to run as the default docker command.</li>
+	<li>Makefile: Builds the docker image and runs the instance.</li>
+	<li>nginx.conf: Uses the ngx_http_auth_request_module module to enforce authentication
+	of /slurm/* and /openapi/*.</li>
+	<li>validate.php: Validates that the PHP session exists and has a user id. It then
+	sets the SLURM user id header.</li>
+	<li>www.conf: Basic untuned PHP FPM configuration.</li>
+</ul>
+
+<h6>Security:</h6>
+<p>The docker instance will run on the host network. Please make sure to avoid running
+it on a non-trusted or shared environment as the user and password are well documented.
+The example is <b>not</b> provided to be run in production.</p>
+
+<h6>Procedure:</h6>
+<ol>
+	<li>
+		Goto the example directory:
+		<pre>cd contribs/auth_proxy_example/simple</pre>
+	</li>
+	<li>
+		Start docker daemon:
+		<pre>make</pre>
+	</li>
+	<li>
+		Navigate to the ping diagnostic test to verify unknown users are rejected:
+		<a href="http://127.0.0.1:8080/slurm/v1/ping/">Ping Test</a>.
+	</li>
+	<li>
+		From a browser on the machine or a tunnel, navigate to this url:
+		<a href="http://127.0.0.1:8080/auth/">Auth</a>.
+		Enter in the user "test" and password "test".
+	</li>
+	<li>
+		Now nagivate the browser to the ping diagnostic test to verify the
+		login works: <a href="http://127.0.0.1:8080/slurm/v1/ping/">Ping Test</a>.
+	</li>
+</ol>
+
+<h6>See also:</h6>
+<ul>
+	<li>
+		<a href="https://developer.okta.com/blog/2018/08/28/nginx-auth-request">
+			Okta NGiNX Blog post
+		</a>
+	</li>
+</ul>
+
+<h4>Example oauth2 authentication proxy</h4>
+<p>TODO</p>
+
+<h6>See also:</h6>
+<ul>
+	<li>
+		<a href="https://github.com/bitly/oauth2_proxy">
+			Oauth2 Proxy
+		</a>
+	</li>
+	<li>
+		<a href="https://www.ory.sh/run-oauth2-server-open-source-api-security">
+			Ory OAuth2 Server
+		</a>
+	</li>
+	<li>
+		<a href="https://github.com/authlib/example-oauth2-server">
+			Authlib Example Oauth2 Server
+		</a>
+	</li>
+	<li>
+		<a href="https://docs.authlib.org/en/latest/flask/2/authorization-server.html">
+			Flask Authlib Oauth2 Server
+		</a>
+	</li>
+	<li>
+		<a href="https://hackernoon.com/build-your-own-oauth2-server-in-go-7d0f660732c3?gi=330e651f8b4b">
+			GO based Oauth2 Server
+		</a>
+	</li>
+</ul>
+-->
+
+<hr size=4 width="100%">
+
+<p style="text-align:center;">Last modified 17 December 2020</p>
+
+<!--#include virtual="footer.txt"-->

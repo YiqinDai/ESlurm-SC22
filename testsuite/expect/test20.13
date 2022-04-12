@@ -1,0 +1,214 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          qsub command tests for Grid Engine options
+############################################################################
+# Copyright (C) 2016 SchedMD LLC.
+# Written by Danny Auble <da@schedmd.com>
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set exit_code   0
+set file_err	"test$test_id.error"
+set file_in	"test$test_id.input"
+set file_out	"test$test_id.output"
+
+proc cleanup {} {
+	global bin_rm file_in file_out file_err
+
+	exec $bin_rm -f $file_in $file_out $file_err
+}
+
+if {[file executable $qsub] == 0} {
+	skip "$qsub not found"
+}
+
+set exe "hostname"
+set qsub_default "--sbatchline $exe"
+
+# test -b option (sbatch --wrap)
+set matches 0
+eval spawn $qsub -b y $qsub_default
+expect {
+	-re "--wrap=\"${exe}\"" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "qsub not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$matches != 1} {
+	log_error "qsub -b option did not set up correctly"
+	set exit_code 1
+}
+
+# test -pe option (sbatch -c|--cpus-per-task)
+set param 7
+set matches 0
+eval spawn $qsub -pe shm $param $qsub_default
+expect {
+	-re "--cpus-per-task=$param" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "qsub not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$matches != 1} {
+	log_error "qsub -pe option did not set up correctly"
+	set exit_code 1
+}
+
+# test -P option (sbatch --wckey)
+set param "test_wckey"
+set matches 0
+eval spawn $qsub -P $param $qsub_default
+expect {
+	-re "--wckey=$param" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "qsub not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+# test -r option (sbatch --requeue)
+set matches 0
+eval spawn $qsub -r y $qsub_default
+expect {
+	-re "--requeue" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "qsub not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+# test -wd option (sbatch -D)
+set param "/new/dir"
+set matches 0
+eval spawn $qsub -wd $param $qsub_default
+expect {
+	-re "-D$param" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "qsub not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+
+if {$matches != 1} {
+	log_error "qsub -D option did not set up correctly"
+	set exit_code 1
+}
+
+# test -l h_rt option (sbatch -t)
+set param "300"
+set matches 0
+eval spawn $qsub -l h_rt=$param $qsub_default
+set param [expr $param / 60]
+expect {
+	-re "-t$param" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "qsub not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$matches != 1} {
+	log_error "qsub -l h_rt option did not set up correctly"
+	set exit_code 1
+}
+
+# test -l h_rt option (sbatch -t)
+set param "00:05:00"
+set matches 0
+eval spawn $qsub -l h_rt=$param $qsub_default
+expect {
+	-re "-t5" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "qsub not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$matches != 1} {
+	log_error "qsub -l h_rt option did not set up correctly"
+	set exit_code 1
+}
+
+# test -l h_vmem option (sbatch --mem)
+set param "3000"
+set matches 0
+eval spawn $qsub -l h_vmem=$param $qsub_default
+expect {
+	-re "--mem=$param" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "qsub not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$matches != 1} {
+	fail "qsub -l h_vmem option did not set up correctly"
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

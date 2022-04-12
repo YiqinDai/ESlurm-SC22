@@ -1,0 +1,138 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Test of --bcast option.
+############################################################################
+# Copyright (C) 2015 SchedMD LLC
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set exit_code   0
+set file_in     "test$test_id.input"
+set job_id      0
+set timeout $max_job_delay
+
+proc cleanup {} {
+	global file_in
+
+	exec rm -f $file_in
+}
+
+if {[get_config_param "SlurmdUser"] ne "root(0)"} {
+	skip "This test is incompatible with SlurmdUser != root"
+}
+
+make_bash_script $file_in "echo \$0"
+set salloc_pid [spawn $salloc -N1-5 -t1 bash]
+expect {
+	-re "Granted job allocation ($number)" {
+		set job_id $expect_out(1,string)
+		send "$reset_bash_prompt\r"
+		exp_continue
+	}
+	-re "\"$test_prompt\"" {
+		# skip this, just echo of setting test_prompt
+		exp_continue
+	}
+	-re "$test_prompt" {
+		#log_debug "Job initiated"
+	}
+	timeout {
+		cancel_job $job_id
+		slow_kill [expr 0 - $salloc_pid]
+		fail "salloc not responding"
+	}
+}
+if {$job_id == 0} {
+	fail "Did not get job_id"
+}
+
+send "$srun rm -f /tmp/test$test_id\r"
+expect {
+	-re "$test_prompt" {
+		#break
+	}
+	timeout {
+		log_error "srun not responding"
+		set exit_code 1
+	}
+}
+
+set node_cnt 99
+send "echo \$SLURM_NNODES\r"
+expect {
+	-re "($number)" {
+		if { $node_cnt == 99 } {
+			set node_cnt $expect_out(1,string)
+		}
+		exp_continue
+	}
+	-re "$test_prompt" {
+		#break
+	}
+	timeout {
+		log_error "srun not responding"
+		set exit_code 1
+	}
+}
+
+set exec_cnt 0
+send "$srun -l --bcast=/tmp/test$test_id ./$file_in\r"
+expect {
+	-re "not supported" {
+		log_warn "srun --bcast option not supported on this system type (e.g. front-end)"
+		set exec_cnt $node_cnt
+		exp_continue
+	}
+	-re "($number): /tmp/test$test_id" {
+		incr exec_cnt
+		exp_continue
+	}
+	-re "$test_prompt" {
+		#break
+	}
+	timeout {
+		log_error "srun not responding"
+		set exit_code 1
+	}
+}
+
+send "$srun -l rm -v /tmp/test$test_id\r"
+expect {
+	-re "$test_prompt" {
+		#break
+	}
+	timeout {
+		log_error "srun not responding"
+		set exit_code 1
+	}
+}
+
+send "exit\r"
+
+if {$exec_cnt != $node_cnt} {
+	log_error "Executable count != node count ($exec_cnt != $node_cnt)"
+	set exit_code 1
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Documentation</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/documentation.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1> Documentation</h1>
+
+<p><b>NOTE: This documentation is for Slurm version 20.11.<br>
+Documentation for older versions of Slurm are distributed with the source, or
+may be found in the <a href="https://slurm.schedmd.com/archive/">archive</a>.
+</b></p>
+
+<p>Also see <a href="tutorials.html">Tutorials</a> and
+<a href="publications.html">Publications and Presentations</a>.</p>
+
+<h2>Slurm Users</h2>
+<ul>
+<li><a href="quickstart.html">Quick Start User Guide</a></li>
+<li><a href="pdfs/summary.pdf">Command/option Summary (two pages)</a></li>
+<li><a href="man_index.html">Man Pages</a></li>
+<li><a href="rosetta.html">Rosetta Stone of Workload Managers</a></li>
+<li><a href="job_array.html">Job Array Support</a></li>
+<li><a href="heterogeneous_jobs.html">Heterogeneous Job Support</a></li>
+<li><a href="cpu_management.html">CPU Management User and Administrator Guide</a></li>
+<li><a href="mpi_guide.html">MPI and UPC Users Guide</a></li>
+<li><a href="mc_support.html">Support for Multi-core/Multi-threaded Architectures</a></li>
+<li><a href="multi_cluster.html">Multi-Cluster Operation</a></li>
+<li><a href="hdf5_profile_user_guide.html">Profiling Using HDF5 User Guide</a></li>
+<li><a href="nonstop.html">Failure Management Support</a></li>
+<li><a href="job_exit_code.html">Job Exit Codes</a></li>
+<li><a href="resource_binding.html">Resource Binding</a></li>
+<li>Specific Systems
+<ul>
+<li><a href="cray.html">Cray User and Administrator Guide with Native Slurm</a></li>
+<li><a href="intel_knl.html">Intel Knights Landing (KNL) User and Administrator Guide</a></li>
+</ul>
+</li>
+</ul>
+
+<h2>Slurm Administrators</h2>
+<ul>
+<li><a href="quickstart_admin.html">Quick Start Administrator Guide</a></li>
+<li><a href="accounting.html">Accounting</a></li>
+<li><a href="reservations.html">Advanced Resource Reservation Guide</a></li>
+<li><a href="burst_buffer.html">Burst Buffer Guide</a></li>
+<li><a href="cgroups.html">Cgroups Guide</a></li>
+<li><a href="configless_slurm.html">"Configless" Slurm Operation</a></li>
+<li><a href="configurator.html">Configuration Tool (Full version)</a></li>
+<li><a href="configurator.easy.html">Configuration Tool (Simplified version)</a></li>
+<li><a href="containers.html">Containers</a></li>
+<li><a href="cpu_management.html">CPU Management User and Administrator Guide</a></li>
+<li><a href="elasticsearch.html">Elasticsearch Guide</a></li>
+<li><a href="jwt.html">JSON Web Tokens Authentication</a></li>
+<li><a href="nonstop.html">Failure Management Support</a></li>
+<li><a href="federation.html">Federated Scheduling Guide</a></li>
+<li><a href="pam_slurm_adopt.html">Job Containment with pam_slurm_adopt</a></li>
+<li><a href="big_sys.html">Large Cluster Administration Guide</a></li>
+<li><a href="licenses.html">License Management</a></li>
+<li><a href="mcs.html">Multi-Category Security (MCS) Guide</a></li>
+<li><a href="nss_slurm.html">Name Service Caching Through NSS Slurm</a></li>
+<li><a href="network.html">Network Configuration Guide</a></li>
+<li><a href="power_mgmt.html">Power Management Guide (power capping)</a></li>
+<li><a href="power_save.html">Power Saving Guide (power down idle nodes)</a></li>
+<li><a href="prolog_epilog.html">Prolog and Epilog Guide</a></li>
+<li><a href="rest.html">Slurm REST API</a></li>
+<li><a href="rest_api.html">Slurm REST API Reference</a></li>
+<li><a href="troubleshoot.html">Troubleshooting Guide</a></li>
+<li><a href="user_permissions.html">User Permissions</a></li>
+<li><a href="wckey.html">WCKey Management</a></li>
+<li>Workload Prioritization
+<ul>
+<li><a href="priority_multifactor.html">Multifactor Job Priority</a></li>
+<li><a href="classic_fair_share.html">Classic Fairshare Algorithm</a></li>
+<li><a href="priority_multifactor3.html">Depth-Oblivious Fair-share Factor</a></li>
+<li><a href="fair_tree.html">Fair Tree Fairshare Algorithm</a></li>
+</ul>
+</li>
+<li>Slurm Scheduling
+<ul>
+<li><a href="sched_config.html">Scheduling Configuration Guide</a></li>
+<li><a href="cons_res.html">Consumable Resources Guide</a></li>
+<li><a href="core_spec.html">Core Specialization</a></li>
+<li><a href="gang_scheduling.html">Gang Scheduling</a></li>
+<li><a href="gres.html">Generic Resource (GRES) Scheduling</a></li>
+<li><a href="high_throughput.html">High Throughput Computing Guide</a></li>
+<li><a href="preempt.html">Preemption</a></li>
+<li><a href="qos.html">Quality of Service (QOS)</a></li>
+<li><a href="resource_limits.html">Resource Limits</a></li>
+<li><a href="reservations.html">Resource Reservation Guide</a></li>
+<li><a href="cons_res_share.html">Sharing Consumable Resources</a></li>
+<li><a href="topology.html">Topology</a></li>
+<li><a href="tres.html">Trackable Resources (TRES)</a></li>
+</ul>
+</li>
+<li>Specific Systems
+<ul>
+<li><a href="cray.html">Cray User and Administrator Guide with Native Slurm</a></li>
+</ul>
+</li>
+<li>Cloud
+<ul>
+<li><a href="elastic_computing.html">Cloud Scheduling Guide</a></li>
+<li><a href="https://github.com/schedmd/slurm-gcp">Slurm on Google Cloud Platform</a></li>
+</ul>
+</li>
+</ul>
+
+<h2>Slurm Developers</h2>
+<ul>
+<li><a href="contributor.html">Contributor Agreement</a></li>
+<li><a href="programmer_guide.html">Programmer Guide</a></li>
+<li><a href="api.html">Application Programmer Interface (API) Guide</a></li>
+<li><a href="add.html">Adding Files or Plugins to Slurm</a></li>
+<li>Design Information
+<ul>
+<li><a href="gres_design.html">Generic Resource (GRES) Design Guide</a></li>
+<li><a href="job_launch.html">Job Launch Design Guide</a></li>
+<li><a href="select_design.html">Select Plugin Design Guide</a></li>
+</ul>
+</li>
+<li><a href="plugins.html">Plugin Programmer Guide</a></li>
+<li>Plugin Interface Details
+<ul>
+<li><a href="accounting_storageplugins.html">Accounting Storage Plugin Programmer Guide</a></li>
+<li><a href="authplugins.html">Authentication Plugin Programmer Guide</a></li>
+<li><a href="bb_plugins.html">Burst Buffer Plugin Programmer Guide</a></li>
+<li><a href="cli_filter_plugins.html">Command Line Program Policy Plugin Programmer Guide</a></li>
+<li><a href="core_spec_plugins.html">Core Specialization Plugin Programmer Guide</a></li>
+<li><a href="cred_plugins.html">Credential Plugin Programmer Guide</a></li>
+<li><a href="acct_gather_energy_plugins.html">Energy Accounting Plugin Programmer Guide</a></li>
+<li><a href="ext_sensorsplugins.html">External Sensors Plugin Programmer Guide</a></li>
+<li><a href="gres_plugins.html">Generic Resources (GRES) Plugin Programmer Guide</a></li>
+<li><a href="jobacct_gatherplugins.html">Job Accounting Gather Plugin Programmer Guide</a></li>
+<li><a href="jobcompplugins.html">Job Completion Logging Plugin Programmer Guide</a></li>
+<li><a href="job_container_plugins.html">Job Container Plugin API</a></li>
+<li><a href="job_submit_plugins.html">Job Submission Plugin Programmer Guide</a></li>
+<li><a href="launch_plugins.html">Launch Plugin Programmer Guide</a></li>
+<li><a href="mpiplugins.html">MPI Plugin Programmer Guide</a></li>
+<li><a href="mcs_plugins.html">Multi-Category Security (MCS) Plugin Programmer Guide</a></li>
+<li><a href="node_features_plugins.html">Node Features Plugin Programmer Guide</a></li>
+<li><a href="power_plugins.html">Power Management Plugin Programmer Guide</a></li>
+<li><a href="preemption_plugins.html">Preemption Plugin Programmer Guide</a></li>
+<li><a href="prep_plugins.html">PrEp Plugin Programmer Guide</a></li>
+<li><a href="priority_plugins.html">Priority Plugin Programmer Guide</a></li>
+<li><a href="proctrack_plugins.html">Process Tracking Plugin Programmer Guide</a></li>
+<li><a href="acct_gather_profile_plugins.html">Profile Accounting Plugin Programmer Guide</a></li>
+<li><a href="selectplugins.html">Resource Selection Plugin Programmer Guide</a></li>
+<li><a href="schedplugins.html">Scheduler Plugin Programmer Guide</a></li>
+<li><a href="site_factor.html">Site Factor (Priority) Plugin Programmer Guide</a></li>
+<li><a href="slurmctld_plugstack.html">Slurmctld Generic Plugin Programmer Guide</a></li>
+<li><a href="switchplugins.html">Switch (Interconnect) Plugin Programmer Guide</a></li>
+<li><a href="taskplugins.html">Task Plugin Programmer Guide</a></li>
+<li><a href="topology_plugin.html">Topology Plugin Programmer Guide</a></li>
+</ul>
+</li>
+</ul>
+
+<p style="text-align:center;">Last modified 21 October 2020</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

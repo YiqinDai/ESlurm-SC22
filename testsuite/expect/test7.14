@@ -1,0 +1,164 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Verify the ability to modify the Derived Exit Code and Comment
+#          fields of a job record in the database.
+############################################################################
+# Copyright (C) 2010 Lawrence Livermore National Security.
+# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+# Written by Don Lipari <lipari1@llnl.gov>
+# CODE-OCEC-09-009. All rights reserved.
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set file_in          "test$test_id.input"
+set file_prog1       "test$test_id.prog1"
+set file_prog2       "test$test_id.prog2"
+
+proc cleanup {} {
+	global bin_rm file_in file_prog1 file_prog2
+
+	exec $bin_rm -f $file_in $file_prog1 $file_prog2
+}
+
+if {[get_config_param "AccountingStorageType"] ne "accounting_storage/slurmdbd"} {
+	skip "This test can't be run without a usable AccountStorageType"
+}
+
+#
+# Delete left-over programs and rebuild them.
+#
+exec $bin_rm -f $file_in
+exec $bin_rm -f $file_prog1 $file_prog2
+exec $bin_cc -O -o $file_prog1 ${file_prog1}.c
+exec $bin_cc -O -o $file_prog2 ${file_prog2}.c
+
+#
+# Submit a script that returns a successful exit code and confirm that
+# the job record's ExitCode reflects this value.  $file_prog1 returns a
+# successful error code (0) and $file_prog2 returns an unsuccessful
+# error code (123).
+#
+# The failed job step should have no influence on the job's ExitCode
+# value.  However the DerivedExitCode value should be set to the
+# highest value of all the job steps, in this case, 123.
+#
+
+make_bash_script $file_in "
+  $bin_echo 'testing successful job return code'
+  $srun $file_prog1
+  $srun $file_prog2
+  exit 0
+"
+
+set job_id 0
+spawn $sbatch --output=/dev/null -t1 ./$file_in
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	eof {
+		wait
+	}
+}
+if {$job_id == 0} {
+	fail "Batch submit failure"
+}
+
+#
+# Wait for job to complete
+#
+if {[wait_for_job $job_id "DONE"] != 0} {
+	fail "Waiting for job to complete"
+}
+
+#
+# Confirm correct ExitCode and DerivedExitCode settings in job record
+#
+set matches 0
+spawn $scontrol --detail show job $job_id
+expect {
+	-re "ExitCode=0:0" {
+		incr matches
+		exp_continue
+	}
+	-re "DerivedExitCode=123:0" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "scontrol not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$matches != 2} {
+	fail "Job ExitCode incorrect"
+}
+
+#
+# Modify the DerivedExitCode and String of the job
+# (after waiting for the job to get written from slurmctld daemon to slurmdbd)
+#
+sleep 5
+set matches 0
+spawn $sacctmgr -i modify job job=$job_id set DerivedExitCode=22 Comment=hello
+expect {
+	-re "$job_id" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "sacctmgr modify job not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$matches != 1} {
+	fail "sacctmgr failed to change DerivedExitCode/Comment"
+}
+
+#
+# Confirm the DerivedExitCode and String fields of the job record in the db
+# matches the above modification and that ExitCode did not change.
+#
+set matches 0
+spawn $sacct -n -P -X -j $job_id -o ExitCode,DerivedExitCode,Comment
+expect {
+	-re "0:0\\|0:22\\|hello" {	# Job record
+		incr matches
+		exp_continue
+	}
+	timeout {
+		fail "sacct not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$matches != 1} {
+	fail "sacct of $job_id failed ($matches)"
+}

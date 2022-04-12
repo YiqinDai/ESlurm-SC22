@@ -1,0 +1,164 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Test of job array suspend/resume.
+############################################################################
+# Copyright (C) 2005-2007 The Regents of the University of California.
+# Copyright (C) 2008 Lawrence Livermore National Security.
+# Copyright (C) 2015 SchedMD LLC.
+# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+# Written by Morris Jette <jette@schedmd.com>
+# CODE-OCEC-09-009. All rights reserved.
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set array_size     4
+set exit_code      0
+set file_script    "test$test_id.bash"
+set job_id         0
+set not_supported  0
+
+proc cleanup {} {
+	global job_id bin_rm file_script
+
+	cancel_job $job_id
+	exec $bin_rm -f $file_script
+}
+
+if {[get_config_param "MaxArraySize"] < [expr $array_size + 1]} {
+	skip "MaxArraySize is to small for this test"
+}
+if [param_contains [get_config_param "PreemptMode"] "GANG"] {
+	skip "This test can't be run with gang scheduling"
+}
+if {![is_super_user]} {
+	skip "This test can't be run except as SlurmUser"
+}
+
+proc suspend_job { job_id operation } {
+	global exit_code scontrol not_supported
+
+	spawn $scontrol $operation $job_id
+	expect {
+		-re "Requested operation not supported" {
+			log_warn "Job suspend not supported"
+			set not_supported 1
+			exp_continue
+		}
+		-re "No error" {
+			exp_continue
+		}
+		-re "error" {
+			log_error "scontrol error"
+			set exit_code 1
+			exp_continue
+		}
+		timeout {
+			fail "scontrol not responding"
+		}
+		eof {
+			wait
+		}
+	}
+}
+
+proc check_output { file_name } {
+	global exit_code bin_cat
+	set match1 0
+	set match2 0
+
+	spawn $bin_cat $file_name
+	expect {
+		-re "JobSuspended" {
+			set match1 1
+			exp_continue
+		}
+		-re "AllDone" {
+			set match2 1
+			exp_continue
+		}
+		timeout {
+			fail "cat not responding"
+		}
+		eof {
+			wait
+		}
+	}
+
+	if { $match1 == 0 } {
+		log_error "Job never suspended"
+		set exit_code 1
+	}
+	if { $match2 == 0 } {
+		log_error "Job failed to run to completion"
+		set exit_code 1
+	}
+}
+
+################Test Starts Here################
+make_bash_script $file_script "sleep 100"
+
+spawn $sbatch -N1 --array=0-[expr $array_size -1] --output=/dev/null -t1 $file_script
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		log_debug "Job $job_id was submitted"
+		exp_continue
+	}
+	-re "error" {
+		log_error "sbatch did not submit jobs"
+		set exit_code 1
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {[wait_for_job ${job_id}_1 RUNNING] != 0} {
+	cancel_job $job_id
+	fail "Error starting job ${job_id}_1"
+}
+
+sleep 5
+suspend_job $job_id suspend
+if {$not_supported == 1} {
+	exec $bin_rm -f $file_script
+	cancel_job $job_id
+	skip "Job suspend not supported"
+}
+
+
+if {[wait_for_job ${job_id}_1 SUSPENDED] != 0} {
+	cancel_job $job_id
+	fail "Error suspending job $job_id"
+}
+
+suspend_job $job_id resume
+if {[wait_for_job ${job_id}_1 RUNNING] != 0} {
+	cancel_job $job_id
+	fail "Error resuming job $job_id"
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

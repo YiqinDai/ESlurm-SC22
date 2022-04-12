@@ -1,0 +1,92 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Verify signal mask of tasks have no ignored signals.
+############################################################################
+# Copyright (C) 2010 Lawrence Livermore National Security.
+# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+# CODE-OCEC-09-009. All rights reserved.
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set exit_code        0
+set file_prog       "test$test_id.prog"
+
+proc cleanup {} {
+	global bin_rm file_prog
+
+	exec $bin_rm -f $file_prog
+}
+
+#
+# Delete left-over programs and rebuild them.
+#
+exec $bin_rm -f $file_prog
+exec $bin_cc -O -o $file_prog ${file_prog}.c
+
+#
+#  Run on multiple nodes in case the failure of this test
+#   is intermittent.
+#
+set have_runjob 0
+if {[get_config_param "LaunchType"] eq "launch/runjob"} {
+	set have_runjob 1
+}
+
+if {$have_runjob} {
+	set nnodes 1
+} else {
+	set nnodes [llength [get_nodes_by_state]]
+}
+
+#
+#  Run the test_prog to ensure that no signals are blocked by
+#   default for the job.
+#
+set timeout $max_job_delay
+set srun_pid  [exp_spawn $srun -t1 -N$nnodes ./$file_prog]
+expect {
+	-re "Signal ($number) is ignored!" {
+		set signal $expect_out(1,string)
+		if { $have_runjob && (($signal == 1) || ($signal == 5) || ($signal == 12) || ($signal == 13)) } {
+			log_debug "Signal $signal is ignored by default when using runjob, this error is expected, turn that frown upside down!"
+			exp_continue
+		} else {
+			log_error "At least one signal is ignored!"
+			set exit_code 1
+		}
+	}
+	timeout {
+		slow_kill $srun_pid
+		fail "srun not responding"
+	}
+	eof {
+		# The above signals will result in a bad exit code,
+		# ignore on runjob systems
+		if { !$have_runjob } {
+			catch wait result
+			set exit_code [lindex $result 3]
+		}
+	}
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

@@ -1,0 +1,337 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          sacctmgr modify cluster
+############################################################################
+# Copyright (C) 2008-2010 Lawrence Livermore National Security.
+# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+# Written by Joseph Donaghy <donaghy1@llnl.gov>
+# CODE-OCEC-09-009. All rights reserved.
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+source ./globals_accounting
+
+set exit_code   0
+set mmatches    0
+set dmatches    0
+set tc1		"test$test_id-cluster-1"
+set tc2		"test$test_id-cluster-2"
+set tc3		"test$test_id-cluster-3"
+
+array set cluster {}
+set cluster(Fairshare)     2500
+set cluster(GrpCPUs)       20
+set cluster(GrpJobs)       100
+set cluster(GrpMemory)     200
+set cluster(GrpSubmitJobs) 300
+set cluster(GrpNodes)      100
+set cluster(MaxCPUMins)    100000
+set cluster(MaxCPUs)       500
+set cluster(MaxJobs)       500
+set cluster(MaxSubmitJobs) 400
+set cluster(MaxNodes)      200
+set cluster(MaxWall)       01:00:00
+set cluster(DefaultQos)    "test$test_id\_qos_1"
+
+array set mod_cluster {}
+set mod_cluster(Fairshare)     1375
+set mod_cluster(GrpCPUs)       50
+set mod_cluster(GrpJobs)       200
+set mod_cluster(GrpMemory)     500
+set mod_cluster(GrpSubmitJobs) 400
+set mod_cluster(GrpNodes)      150
+set mod_cluster(MaxCPUMins)    20000
+set mod_cluster(MaxCPUs)       100
+set mod_cluster(MaxJobs)       600
+set mod_cluster(MaxSubmitJobs) 700
+set mod_cluster(MaxNodes)      300
+set mod_cluster(MaxWall)       12:00:00
+set mod_cluster(DefaultQos)    "test$test_id\_qos_2"
+set access_err  0
+
+if {[get_config_param "AccountingStorageType"] ne "accounting_storage/slurmdbd"} {
+	skip "This test can't be run without a usable AccountStorageType"
+}
+
+#
+# Verify if Administrator privileges
+#
+if {[string compare [get_admin_level] "Administrator"]} {
+	skip "This test can't be run without being an Accounting administrator.\nUse: sacctmgr mod user \$USER set admin=admin"
+}
+
+#
+# Use sacctmgr to delete the test cluster
+#
+set nothing 0
+set matches 0
+
+set my_pid [spawn $sacctmgr -i delete cluster $tc1,$tc2,$tc3]
+
+expect {
+	-re "privilege to perform this action" {
+		set access_err 1
+		exp_continue
+	}
+	-re "(There was a problem|Unknown condition|Bad format on|Bad MaxWall|Unknown option)" {
+		log_error "There was a problem with the sacctmgr command"
+		incr exit_code 1
+	}
+	-re "Problem getting" {
+		log_error "There was a problem getting information from the database"
+		incr exit_code 1
+	}
+	-re "Problem adding" {
+		log_error "There was an unknown problem"
+		incr exit_code 1
+	}
+	-re "No associations" {
+		log_error "Your command didn't return anything"
+		incr exit_code 1
+	}
+	-re "Deleting clusters" {
+		incr matches
+		exp_continue
+	}
+	-re " Nothing deleted" {
+		incr matches
+		set nothing 1
+		exp_continue
+	}
+	timeout {
+		log_error "sacctmgr delete not responding"
+		slow_kill $my_pid
+		incr exit_code 1
+	}
+	eof {
+		wait
+	}
+}
+if {$access_err != 0} {
+	return 1
+}
+if {$matches != 1} {
+	log_error "sacctmgr had a problem deleting cluster got $matches"
+	incr exit_code 1
+}
+if { !$nothing } {
+	if {![check_acct_associations]} {
+		log_error "Our associations don't line up"
+		incr exit_code 1
+	}
+}
+#
+# Delete vestigial QOSs
+#
+set dmatches 0
+spawn $sacctmgr -i delete qos $cluster(DefaultQos) $mod_cluster(DefaultQos)
+expect {
+	-re "Deleting QOS" {
+		incr dmatches
+		exp_continue
+	}
+	-re "Nothing deleted" {
+		incr dmatches
+		exp_continue
+	}
+	timeout {
+		log_error "sacctmgr delete not responding"
+		slow_kill $sadel_pid
+		set exit_code 1
+	}
+	eof {
+		wait
+	}
+}
+
+if {$dmatches != 1} {
+	log_error "sacctmgr had a problem deleting QOS got $dmatches"
+	set exit_code 1
+}
+
+#
+# Create tmp QOS
+#
+set qos_set 0
+spawn $sacctmgr -i add qos $cluster(DefaultQos) $mod_cluster(DefaultQos)
+expect {
+	-re "Adding QOS" {
+		set qos_set 1
+		exp_continue
+	}
+	timeout {
+		log_error "sacctmgr is not responding"
+		set exit_code 1
+	}
+	eof {
+		wait
+	}
+}
+if {$qos_set != 1} {
+	log_error "QOS $dqos was not created"
+	set exit_code 1
+}
+
+
+#
+# Create a cluster for testing
+#
+set access_err 0
+add_cluster "$tc1,$tc2,$tc3" [array get cluster]
+
+if {$access_err != 0} {
+	skip "Not authorized to perform this test"
+}
+
+# Check Cluster 1
+if {![check_assoc_limit 1 cluster $tc1 [array get cluster]]} {
+	log_error "The association limits for cluster $tc1 are incorrect"
+	set exit_code 1
+}
+
+# Check Cluster 2
+if {![check_assoc_limit 1 cluster $tc2 [array get cluster]]} {
+	log_error "The association limits for cluster $tc2 are incorrect"
+	set exit_code 1
+}
+
+# Check Cluster 3
+if {![check_assoc_limit 1 cluster $tc3 [array get cluster]]} {
+	log_error "The association limits for cluster $tc3 are incorrect"
+	set exit_code 1
+}
+
+if {![check_acct_associations]} {
+	log_error "Our associations don't line up"
+	set exit_code 1
+}
+
+#
+# Modify the test cluster
+#
+set access_err 0
+mod_cluster $tc2 [array get mod_cluster]
+
+if {$access_err != 0} {
+	skip "Not authorized to perform this test"
+}
+
+# Check Cluster 2
+if {![check_assoc_limit 1 cluster $tc2 [array get mod_cluster]]} {
+	log_error "The association limits for cluster $tc2 are incorrect"
+	set exit_code 1
+}
+
+if {![check_acct_associations]} {
+	log_error "Our associations don't line up"
+	set exit_code 1
+}
+
+#
+# Check these cluster limits again after cluster 2 was modified
+#
+log_info "Check Cluster limits after one cluster has been modified:"
+# Check Cluster 1
+if {![check_assoc_limit 1 cluster $tc1 [array get cluster]]} {
+	log_error "The association limits for cluster $tc1 are incorrect"
+	set exit_code 1
+}
+
+# Check Cluster 2
+if {![check_assoc_limit 1 cluster $tc2 [array get mod_cluster]]} {
+	log_error "The association limits for cluster $tc2 are incorrect"
+	set exit_code 1
+}
+
+# Check Cluster 3
+if {![check_assoc_limit 1 cluster $tc3 [array get cluster]]} {
+	log_error "The association limits for cluster $tc3 are incorrect"
+	set exit_code 1
+}
+
+#
+# Use sacctmgr to delete the test cluster
+#
+set dmatches 0
+set sadel_pid [spawn $sacctmgr delete cluster $tc1,$tc2,$tc3]
+expect {
+	-re "Deleting clusters" {
+		incr dmatches
+		exp_continue
+	}
+	-re "$tc1" {
+		incr dmatches
+		exp_continue
+	}
+	-re "Would you like to commit changes\\\? \\\(You have 30 seconds to decide\\\)" {
+		incr dmatches
+		exp_continue
+	}
+	-re "\\\(N\\\/y\\\):" {
+		incr dmatches
+		send "Y"
+		exp_continue
+	}
+	timeout {
+		slow_kill $sadel_pid
+		fail "sacctmgr delete not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$dmatches != 4} {
+	log_error "sacctmgr had a problem deleting cluster "
+	set exit_code 1
+}
+
+#
+# Delete Qos
+#
+
+set dmatches 0
+spawn $sacctmgr -i delete Qos $cluster(DefaultQos) $mod_cluster(DefaultQos)
+expect {
+	-re "Deleting QOS" {
+		incr dmatches
+		exp_continue
+	}
+	timeout {
+		slow_kill $sadel_pid
+		fail "sacctmgr delete not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$dmatches != 1} {
+	fail "sacctmgr had a problem deleting QOS got $dmatches"
+}
+
+if {![check_acct_associations]} {
+	fail "Our associations don't line up"
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

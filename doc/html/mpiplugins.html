@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Slurm MPI Plugin API</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/mpiplugins.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1><a name="top">Slurm MPI Plugin API</a></h1>
+
+<h2> Overview</h2>
+<p> This document describes Slurm MPI selection plugins and the API that defines
+them. It is intended as a resource to programmers wishing to write their own Slurm
+node selection plugins.</p>
+
+<p>Slurm MPI selection plugins are Slurm plugins that implement the which version of
+mpi is used during execution of the new Slurm job. API described herein. They are
+intended to provide a mechanism for both selecting MPI versions for pending jobs and
+performing any mpi-specific tasks for job launch or termination. The plugins must
+conform to the Slurm Plugin API with the following specifications:</p>
+<p><span class="commandline">const char plugin_type[]</span><br>
+The major type must be &quot;mpi.&quot; The minor type can be any recognizable
+abbreviation for the type of node selection algorithm. We recommend, for example:</p>
+<ul>
+<li><b>pmi2</b> &mdash; For use with MPI2 and MVAPICH2.</li>
+<li><b>pmix</b> &mdash; Exascale PMI implementation (currently supported by
+	OpenMPI starting from version 2.0)</li>
+<li><b>none</b> &mdash; For use with most other versions of MPI.</li>
+</ul>
+<p><span class="commandline">const char plugin_name[]</span><br>
+Some descriptive name for the plugin.
+There is no requirement with respect to its format.</p>
+<p><span class="commandline">const uint32_t plugin_version</span><br>
+If specified, identifies the version of Slurm used to build this plugin and
+any attempt to load the plugin from a different version of Slurm will result
+in an error.
+If not specified, then the plugin may be loaded by Slurm commands and
+daemons from any version, however this may result in difficult to diagnose
+failures due to changes in the arguments to plugin functions or changes
+in other Slurm functions used by the plugin.</p>
+
+<p>A simplified flow of logic follows:
+<ul>
+<li>srun is able to specify the correct mpi to use with --mpi=MPITYPE</li>
+<li>
+	srun command runs
+	<span class="commandline">p_mpi_hook_client_prelaunch()</span>
+	which will set up the correct environment for the specified mpi.
+</li>
+<li>
+	slurmstepd process runs
+	<span class="commandline">p_mpi_hook_slurmstepd_prefork()</span>
+	which will set configure the slurmd to use the correct mpi as well to interact with the srun.
+</li>
+<li>
+	slurmstepd process runs
+	<span class="commandline">p_mpi_hook_slurmstepd_task()</span>
+	which executes immediately before fork/exec of each task.
+</li>
+<li>
+	srun command runs
+	<span class="commandline">p_mpi_hook_client_fini()</span>
+	which executes after all tasks have finished.
+</li>
+</ul>
+
+
+<h2>Data Objects</h2>
+<p> These functions are expected to read and/or modify data structures directly in
+the slurmd daemon's and srun memory. Slurmd is a multi-threaded program with independent
+read and write locks on each data structure type. Therefore the type of operations
+permitted on various data structures is identified for each function.</p>
+
+<h2>Environment Variables</h2>
+<p> Slurm will set the following environment variables for plugins:</p>
+<ul>
+<li><b>SLURM_MPI_TYPE</b> &mdash; MPI plugin name that has been loaded for job. </li>
+</ul>
+
+<h2>API Functions</h2>
+<p>The following functions should be defined or at least be stubbed.</p>
+
+<p class="commandline"> int init (void)
+<p style="margin-left:.2in"><b>Description</b>:<br>
+  Called when the plugin is loaded or reloaded, before any other functions are
+  called. Put global initialization here.
+<p style="margin-left:.2in"><b>Returns</b>: <br>
+  <span class="commandline">SLURM_SUCCESS</span> on success, or<br>
+  <span class="commandline">SLURM_ERROR</span> on failure.</p>
+
+<p class="commandline"> void fini (void)
+<p style="margin-left:.2in"><b>Description</b>:<br>
+  Called when the plugin is removed or reloaded. Clear any allocated storage
+  here.
+<p style="margin-left:.2in"><b>Returns</b>: None.</p>
+
+<p style="margin-left:.2in"><b>Note</b>: These init and fini functions are not the same as those
+described in the <span class="commandline">dlopen (3)</span> system library.
+The C run-time system co-opts those symbols for its own initialization.
+The system <span class="commandline">_init()</span> is called before the Slurm
+<span class="commandline">init()</span>, and the Slurm
+<span class="commandline">fini()</span> is called before the system's
+<span class="commandline">_fini()</span>.</p>
+
+<p class="commandline">mpi_plugin_client_state_t*  p_mpi_hook_client_prelaunch  (const mpi_plugin_client_info_t *job, char ***env)</p>
+<p style="margin-left:.2in"><b>Description</b>: Called by srun to configure the slurmd's environment
+to that of the correct mpi.</p>
+<p style="margin-left:.2in"><b>Arguments</b>:<br>
+<span class="commandline">job</span>&nbsp;
+&nbsp;&nbsp;(input) Pointer to the Job Step (stepd_step_rec_t) that about to run.
+Cannot be NULL.<br>
+<span class="commandline">env</span>&nbsp;
+&nbsp;&nbsp;(input/output) Pointer to pointer of job environment to allow plugin
+to modify job environment as needed.</p>
+<p style="margin-left:.2in"><b>Returns</b>: SLURM_SUCCESS if successful. On
+failure, the plugin should return SLURM_ERROR.</p>
+
+<p class="commandline">int p_mpi_hook_slurmstepd_prefork(const stepd_step_rec_t *job, char ***env)</p>
+<p style="margin-left:.2in"><b>Description</b>: Called by slurmstepd before
+forking to create the first job process.  Most all the real processing happens
+here. This is not called for batch jobs and extern steps.</p>
+<p style="margin-left:.2in"><b>Arguments</b>:<br>
+<span class="commandline">job</span>&nbsp;
+&nbsp;&nbsp;(input) Pointer to the Job Step (stepd_step_rec_t) that about to run.
+Cannot be NULL.<br>
+<span class="commandline">env</span>&nbsp;
+&nbsp;&nbsp;(input/output) Pointer to pointer of job environment to allow plugin
+to modify job environment as needed.</p>
+<p style="margin-left:.2in"><b>Returns</b>: SLURM_SUCCESS if successful. On
+failure, the plugin should return SLURM_ERROR.</p>
+
+<p class="commandline">void p_mpi_hook_slurmstepd_task(const mpi_plugin_task_info_t *job, char ***env)</p>
+<p style="margin-left:.2in"><b>Description</b>:&nbsp;
+Called by slurmstepd process immediately after fork and becoming job user, but
+immediatly prior to exec of user task. This is not called for batch job steps
+and extern steps.</p>
+<p style="margin-left:.2in"><b>Arguments</b>:<br>
+<span class="commandline">job</span>&nbsp;
+&nbsp;&nbsp;(input) Pointer to the Job Step (stepd_step_rec_t) that about to run.
+Cannot be NULL.<br>
+<span class="commandline">env</span>&nbsp;
+&nbsp;&nbsp;(input/output) Pointer to pointer of job environment to allow plugin
+to modify job environment as needed.
+</p><p style="margin-left:.2in"><b>Returns</b>: void returning function. </p>
+
+<p class="commandline">int p_mpi_hook_client_fini(mpi_plugin_client_state_t *state);</p>
+<p style="margin-left:.2in"><b>Description</b>: Called by srun after all tasks
+are complete. Cleans up anything that needs cleaning up after execution.</p>
+<p style="margin-left:.2in"><b>Arguments</b>:<br>
+<span class="commandline">state</span>&nbsp;Launch state of MPI. Currently, a
+typedef of void.
+<p style="margin-left:.2in"><b>Returns</b>: SLURM_SUCCESS if successful. On
+failure, the plugin should return SLURM_ERROR, causing slurmctld to exit.</p>
+
+<p style="text-align:center;">Last modified 15 December 2018</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

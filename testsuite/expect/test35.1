@@ -1,0 +1,204 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Cray persistent burst buffer creation
+############################################################################
+# Copyright (C) 2015-2018 SchedMD LLC.
+# Written by Morris Jette <jette(at)schedmd.com>
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set exit_code   0
+set output_mk   "test$test_id.mk.output"
+set output_rm   "test$test_id.rm.output"
+set output_use  "test$test_id.use.output"
+set script_mk   "test$test_id.mk.bash"
+set script_rm   "test$test_id.rm.bash"
+set script_use  "test$test_id.use.bash"
+
+proc cleanup {} {
+	global bin_rm output_mk output_rm output_use
+	global script_mk script_rm script_use
+
+	exec $bin_rm -f $output_mk $output_rm $output_use
+	exec $bin_rm -f $script_mk $script_rm $script_use
+}
+
+proc find_bb_name { fname bb_name } {
+	global bin_cat
+
+	set found 0
+	spawn $bin_cat $fname
+	expect {
+		-re "Name=$bb_name" {
+			set found 1
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	return $found
+}
+
+if {[get_my_uid] == 0} {
+	skip "This test can't be run as user root"
+}
+
+set bb_types [get_bb_types]
+if {[string first "datawarp" $bb_types] == -1} {
+	skip "This test can only be run with the burst_buffer/datawarp plugin"
+}
+if {![check_bb_persistent]} {
+	skip "This test can only be run if persistent burst_buffers can be created/deleted"
+}
+
+make_bash_script $script_mk "#BB create_persistent name=test$test_id capacity=48 access=striped type=scratch
+$scontrol show burst"
+
+make_bash_script $script_rm "#BB destroy_persistent name=test$test_id
+$scontrol show burst"
+
+make_bash_script $script_use "#DW persistentdw name=test$test_id
+$scontrol show burst"
+
+#
+# Remove any vestigial buffer
+#
+log_debug "Clean up vestigial burst buffer"
+set job_id 0
+spawn $sbatch -t1 -N1 --output=/dev/null $script_rm
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$job_id == 0} {
+	log_error "Job did not launch"
+	set exit_code 1
+}
+if {[wait_for_job -timeout 660 $job_id "DONE"] != 0} {
+	log_error "Job did not complete"
+	set exit_code 1
+	cancel_job $job_id
+}
+
+#
+# Now submit a job to use the persistent burst buffer followed by a job
+# to create the burst buffer, make sure the buffer creation happens first
+#
+log_debug "Create and use a burst buffer"
+set job_id_use 0
+spawn $sbatch -t1 -N1 --output=$output_use $script_use
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id_use $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+set job_id_mk 0
+spawn $sbatch -t1 -N1 --output=$output_mk $script_mk
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id_mk $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$job_id_mk == 0} {
+	log_error "Job did not launch"
+	set exit_code 1
+} elseif {[wait_for_job -timeout 660 $job_id_mk "DONE"] != 0} {
+	log_error "Job did not complete"
+	set exit_code 1
+	cancel_job $job_id_mk
+}
+
+if {$job_id_use == 0} {
+	log_error "Job did not launch"
+	set exit_code 1
+} elseif {[wait_for_job -timeout 660 $job_id_use "DONE"] != 0} {
+	log_error "Job did not complete"
+	set exit_code 1
+	cancel_job $job_id_use
+} elseif {[wait_for_file -timeout 660 $output_use] != 0} {
+	set exit_code 1
+} elseif {[find_bb_name $output_use test$test_id] == 0} {
+	log_error "Job using burst buffer ran before creation"
+	set exit_code 1
+} elseif {[wait_for_file -timeout 660 $output_mk] != 0} {
+	set exit_code 1
+} elseif {[find_bb_name $output_mk test$test_id] == 0} {
+	log_error "Job creating burst buffer failed to do so"
+	set exit_code 1
+}
+
+#
+# Now clean up the burst buffer
+#
+set job_id_rm 0
+spawn $sbatch -t1 -N1 --output=$output_rm $script_rm
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id_rm $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$job_id_rm == 0} {
+	fail "Job did not launch"
+} elseif {[wait_for_job -timeout 660 $job_id_rm "DONE"] != 0} {
+	cancel_job $job_id_rm
+	fail "Job did not complete"
+} elseif {[wait_for_file -timeout 660 $output_rm] != 0} {
+	fail "Failed withing for file ($output_rm)"
+} elseif {[find_bb_name $output_rm test$test_id] != 0} {
+	fail "Job deleting burst buffer failed to do so"
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

@@ -1,0 +1,132 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Verify srun behaves when its controlling terminal disappears.
+############################################################################
+# Copyright (C) 2006 The Regents of the University of California.
+# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+# Written by Christopher J. Morrone <morrone2@llnl.gov>
+# CODE-OCEC-09-009. All rights reserved.
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set test_script          "test$test_id.sh"
+
+#
+# Create a test script to be launch by srun
+#
+exec $bin_rm -f $test_script
+make_bash_script $test_script {
+	echo "Running"
+
+	sleep 5
+
+	for ((i = 0; i < 100; i++)); do
+		cat /etc/hosts
+	done
+}
+
+#
+# Launch the test script
+#
+set timeout $max_job_delay
+set jobid  0
+set stepid 0
+set job_running 0
+set srun_pid [spawn $srun --unbuffered -v -n1 -t1 ./$test_script]
+expect {
+	-re "launching StepId=(($number)\\.$re_word_str)" {
+		set stepid $expect_out(1,string)
+		set jobid $expect_out(2,string)
+		exp_continue
+	}
+	"Running" {
+		set job_running 1
+	}
+	timeout {
+		slow_kill $srun_pid
+		fail "Failed to launch test program through srun"
+	}
+	eof {
+		wait
+	}
+}
+if {$jobid == 0 || $job_running == 0} {
+	fail "Failed to launch test program through srun"
+}
+
+#
+# Kill srun's stdio streams
+#
+log_debug "Test saw stepid $stepid"
+set file [exp_open]
+close $file
+
+#
+# Lets see if the job step finishes normally
+#
+set running "seed"
+set i 0
+while {[string compare $running ""]} {
+	set running [exec $squeue --noheader --states=running --steps=$stepid]
+	sleep 1
+	if {$i == 30} {
+		cancel_job $jobid
+		sleep 5
+		exec kill -9 $srun_pid
+		fail "Job step is not completing"
+	}
+	incr i 1
+}
+log_debug "Test sees step is gone, srun should have exited as well"
+
+#
+# And finally check to see if srun is still hanging around (it should
+# have exited by now) and job has completed
+#
+if [catch {exec kill -0 $srun_pid}] {
+	log_debug "Srun command is terminated, as desired"
+	set exit_code 0
+} else {
+	log_error "srun is still running after job exits!"
+	set exit_code 1
+}
+spawn $squeue --noheader --jobs=$jobid
+expect {
+	-re "R" {
+		log_error "Job not completed!"
+		set exit_code 1
+		exp_continue
+	}
+	timeout {
+		fail "squeue not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$exit_code == 0} {
+	exec $bin_rm -f $test_script
+} else {
+	cancel_job $jobid
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

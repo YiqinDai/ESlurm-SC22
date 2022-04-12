@@ -1,0 +1,187 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          strigger --set --idle
+############################################################################
+# Copyright (C) 2007 The Regents of the University of California.
+# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+# Written by Morris Jette <jette1@llnl.gov>
+# CODE-OCEC-09-009. All rights reserved.
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set exit_code        0
+set file_in          "test$test_id.input"
+set file_in_idle     "test$test_id.idle_input"
+set file_out         "test$test_id.output"
+
+#
+# get my uid and clear any vestigial triggers
+#
+set uid [get_my_uid]
+if {$uid == 0} {
+	skip "This test can't be run as user root"
+}
+
+proc cleanup {} {
+	global bin_rm file_in file_in_idle file_out strigger uid
+
+	exec $bin_rm -f $file_in $file_in_idle $file_out
+
+	# clear any vestigial triggers
+	exec $strigger --clear --quiet --user=$uid
+}
+
+exec $strigger --clear --quiet --user=$uid
+
+#
+# Build input script files and submit a job
+#
+set cwd "[$bin_pwd]"
+exec $bin_rm -f $file_out
+make_bash_script $file_in          "sleep 6"
+make_bash_script $file_in_idle     "echo \$1 >$cwd/$file_out"
+
+set job_id 0
+spawn $sbatch --output=/dev/null -t1 $file_in
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		kill_srun
+		fail "srun not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$job_id == 0} {
+	fail "Batch submit failure"
+}
+
+#
+# Now add an idle node trigger
+#
+set disabled 0
+set matches  0
+set strigger_pid [spawn $strigger --set -v --idle --offset=1 --program=$cwd/$file_in_idle]
+expect {
+	-re "permission denied" {
+		set disabled 1
+		exp_continue
+	}
+	-re "trigger set" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		slow_kill $strigger_pid
+		fail "strigger not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$disabled == 1} {
+	cancel_job $job_id
+	exec $bin_rm -f $file_in $file_in_idle
+	skip "Current configuration prevents setting triggers. Need to run as SlurmUser or make SlurmUser=root"
+}
+if {$matches == 0} {
+	log_error "Trigger creation failure"
+	set exit_code 1
+}
+
+#
+# Look for the trigger
+#
+set idle_matches 0
+set strigger_pid [spawn $strigger --get -v --user=$uid]
+expect {
+	-re "idle" {
+		incr idle_matches
+		exp_continue
+	}
+	timeout {
+		slow_kill $strigger_pid
+		fail "strigger not responding"
+	}
+	eof {
+		wait
+	}
+}
+#
+# Depending upon timing of when slurmctld checks triggers, this
+# might be processed immediately and not found by "strigger --get"
+#
+#if {$idle_matches == 0} {
+#	log_error "Trigger get failure"
+#	set exit_code 1
+#}
+
+#
+# Wait for trigger event (hopefully, shortly after the job completes)
+#
+if {[wait_for_job $job_id "DONE"] != 0} {
+	log_error "Waiting for job to complete"
+	set exit_code 1
+}
+if {[wait_for_file $file_out] == 0} {
+	spawn $bin_cat $file_out
+	expect {
+		eof {
+			wait
+		}
+	}
+} else {
+	log_error "Idle trigger program's output file missing"
+	set exit_code 1
+}
+
+#
+# Check that this trigger is purged
+#
+set idle_matches 0
+set strigger_pid [spawn $strigger --get -v --user=$uid]
+expect {
+	-re "idle" {
+		incr idle_matches
+		exp_continue
+	}
+	timeout {
+		slow_kill $strigger_pid
+		fail "strigger not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$idle_matches != 0} {
+	log_error "Trigger get failure, still exists"
+	set exit_code 1
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}
+

@@ -1,0 +1,112 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          validate that a job step will report a TIMEOUT state
+#          inside accounting when job exceeds timelimit
+############################################################################
+# Copyright (C) 2014 SchedMD LLC
+# Written by Nathan Yee <nyee32@schedmd.com>
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set exit_code     0
+set job_id        0
+set file_in       "test$test_id\_sc"
+
+proc cleanup {} {
+	global bin_rm file_in
+
+	exec $bin_rm -f $file_in
+}
+
+set accounting_storage_enforce [get_config_param "AccountingStorageEnforce"]
+if {[param_contains $accounting_storage_enforce "nosteps"] || [param_contains $accounting_storage_enforce "nojobs"]} {
+	skip "This test can not be run with nosteps or nojobs (AccountingStorageEnforce)"
+}
+if {[get_config_param "AccountingStorageType"] ne "accounting_storage/slurmdbd"} {
+	skip "This test requires use of Slurmdbd"
+}
+
+# Remove any vestigial files
+exec $bin_rm -f $file_in
+
+make_bash_script $file_in "$srun -t00:01:00 sleep 300"
+
+spawn $sbatch -o/dev/null -t00:02:00 $file_in
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch is not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$job_id == 0} {
+	fail "No job was submitted"
+}
+
+if {[wait_for_job $job_id "DONE"] != 0} {
+	log_error "Error waiting for job $job_id to complete"
+	cancel_job $job_id
+	set exit_code 1
+}
+
+set failed_cnt 0
+set timeout_cnt 0
+spawn $sacct --jobs=$job_id --format=State --noheader --starttime=00:00
+expect {
+	-re "FAILED" {
+		incr failed_cnt
+		exp_continue
+	}
+	-re "TIMEOUT" {
+		incr timeout_cnt
+		exp_continue
+	}
+	timeout {
+		fail "sacct is not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$failed_cnt != 2 || $timeout_cnt != 1} {
+	log_error "batch job $job_id did not FAIL and/or the step did not TIMEOUT.  Count for FAILED was $failed_cnt (not 2) and TIMEOUT was $timeout_cnt (not 1)"
+	set exit_code 1
+
+	log_debug "Gathering more job information:"
+	spawn $sacct --jobs=$job_id --starttime=00:00
+	expect {
+		eof {
+			wait
+		}
+	}
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors"
+}

@@ -1,0 +1,185 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Test some invalid combinations of --gpu options
+############################################################################
+# Copyright (C) 2018 SchedMD LLC
+# Written by Morris Jette
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+############################################################################
+source ./globals
+
+set exit_code   0
+set job_id      0
+
+set nb_nodes [get_partition_param [default_partition] "TotalNodes"]
+
+set gpu_cnt [get_highest_gres_count 1 "gpu"]
+if {$gpu_cnt < 1} {
+	skip "This test requires 1 or more GPUs on 1 node of the default partition"
+}
+log_debug "GPU count is $gpu_cnt"
+
+#
+# Request more GPUs per node than exist on a single node
+#
+log_info "==== TEST 1 ===="
+spawn $sbatch --gpus-per-node=[expr $gpu_cnt + 1] -N1 --output=/dev/null -t1 --wrap $bin_hostname
+expect {
+	-re "Submitted batch job ($number)" {
+		cancel_job $expect_out(1,string)
+		log_error "Batch request not rejected"
+		set exit_code 1
+		exp_continue
+	}
+	-re "error: " {
+		log_debug "Error is expected, no worries"
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+#
+# Specify 1 node and more GPUs than exist on a single node
+#
+log_info "==== TEST 2 ===="
+spawn $sbatch --gpus-per-node=$gpu_cnt --gres=[expr $gpu_cnt + 1] -N1 --output=/dev/null -t1 --wrap $bin_hostname
+expect {
+	-re "Submitted batch job ($number)" {
+		cancel_job $expect_out(1,string)
+		log_error "Batch request not rejected"
+		set exit_code 1
+		exp_continue
+	}
+	-re "error: " {
+		log_debug "Error is expected, no worries"
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+#
+# Specify inconsistent --cpus-per-task and --gpus-per-task/--cpus-per-gpu
+#
+log_info "==== TEST 3 ===="
+spawn $sbatch --gpus-per-task=1 --cpus-per-gpu=1 --cpus-per-task=2 -N1 --output=/dev/null -t1 --wrap $bin_hostname
+expect {
+	-re "Submitted batch job ($number)" {
+		cancel_job $expect_out(1,string)
+		log_error "Batch request not rejected"
+		set exit_code 1
+		exp_continue
+	}
+	-re "error: " {
+		log_debug "Error is expected, no worries"
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+#
+# Specify inconsistent tasks per node
+#
+log_info "==== TEST 4 ===="
+spawn $sbatch --gpus-per-task=1 --gpus-per-node=1 -n2 -N1 --output=/dev/null -t1 --wrap $bin_hostname
+expect {
+	-re "Submitted batch job ($number)" {
+		cancel_job $expect_out(1,string)
+		log_error "Batch request not rejected"
+		set exit_code 1
+		exp_continue
+	}
+	-re "error: " {
+		log_debug "Error is expected, no worries"
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+#
+# Specify gpus-per-socket, but no sockets-per-node count
+#
+log_info "==== TEST 5 ===="
+spawn $sbatch --gpus-per-socket=1 -N1 --output=/dev/null -t1 --wrap $bin_hostname
+expect {
+	-re "Submitted batch job ($number)" {
+		cancel_job $expect_out(1,string)
+		log_error "Batch request not rejected"
+		set exit_code 1
+		exp_continue
+	}
+	-re "error: " {
+		log_debug "Error is expected, no worries"
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+#
+# Specify inconsistent tasks per node (variation of test 4)
+#
+log_info "==== TEST 6 ===="
+spawn $sbatch --gpus-per-task=1 --gpus-per-node=2 --ntasks-per-node=1 -N1 --output=/dev/null -t1 --wrap $bin_hostname
+expect {
+	-re "Submitted batch job ($number)" {
+		cancel_job $expect_out(1,string)
+		log_error "Batch request not rejected"
+		set exit_code 1
+		exp_continue
+	}
+	-re "error: " {
+		log_debug "Error is expected, no worries"
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

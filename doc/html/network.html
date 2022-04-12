@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Network Configuration Guide</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/network.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1>Network Configuration Guide</h1>
+
+<h2>Contents</h2>
+<a href="#overview">Overview</a><br>
+<a href="#slurmctld">Communication for slurmctld</a><br>
+<a href="#slurmdbd">Communication for slurmdbd</a><br>
+<a href="#slurmd">Communication for slurmd</a><br>
+<a href="#client">Communication for client commands</a><br>
+<a href="#failover">Communication for multiple controllers</a><br>
+<a href="#multi">Communication with multiple clusters</a><br>
+<a href="#federation">Communication in a federation</a><br>
+
+<h2><a name="overview">Overview</a></h2>
+
+<p>There are a lot of components in a Slurm cluster that need to be able
+to communicate with each other. Some sites have security requirements that
+prevent them from opening all communications between the machines and will
+need to be able to selectively open just the ports that are necessary.
+This document will go over what is needed for different components to be
+able to talk to each other.</p>
+
+<p>Below is a diagram of a fairly typical cluster, with <b>slurmctld</b>
+and <b>slurmdbd</b> on separate machines. In smaller clusters, MySQL can run
+on the same machine as the <b>slurmdbd</b>, but in most cases it is preferable
+to have it run on a dedicated machine. <b>slurmd</b> runs on the
+compute nodes and the client commands can be installed and run from machines
+of your choosing.</p>
+
+<div class="figure">
+  <img src="network_standard.gif" width="550"><br>
+  Typical configuration
+</div>
+
+<h2><a name="slurmctld">Communication for slurmctld</a></h2>
+
+<p>The default port used by <b>slurmctld</b> to listen for incoming requests
+is <u>6817</u>. This port can be changed with the
+<a href="slurm.conf.html#OPT_SlurmctldPort">SlurmctldPort</a> slurm.conf
+parameter. Slurmctld listens for incoming requests on that port and responds
+back on the same connection opened by the requestor.</p>
+
+<p>The machine running <b>slurmctld</b> needs to be able to establish
+outbound connections as well. It needs to communicate with <b>slurmdbd</b>
+on port <u>6819</u> by default (see the <a href="#slurmdbd">slurmdbd</a>
+section for information on how to change this). It also needs to communicate
+with <b>slurmd</b> on the compute nodes on port <u>6818</u> by default (see the
+<a href="#slurmd">slurmd</a> section for information on how to change
+this).</p>
+
+<p>By default, the <b>slurmctld</b> will listen for IPv4 traffic.  IPv6
+communication can be enabled by adding <u>EnableIPv6</u> to the
+<a href="slurm.conf.html#OPT_CommunicationParameters">
+CommunicationParameters</a> in your slurm.conf. With IPv6 enabled, you can
+disable IPv4 by adding <u>DisableIPv4</u> to the
+<a href="slurm.conf.html#OPT_CommunicationParameters">
+CommunicationParameters</a>. These settings must match in both slurmdbd.conf
+and slurm.conf (see the <a href="#slurmdbd">slurmdbd</a> section).</p>
+
+<h2><a name="slurmdbd">Communication for slurmdbd</a></h2>
+
+<p>The default port used by <b>slurmdbd</b> to listen for incoming requests
+is <u>6819</u>. This port can be changed with the
+<a href="slurmdbd.conf.html#OPT_DbdPort">DbdPort</a> slurmdbd.conf parameter.
+Slurmdbd listens for incoming requests on that port and responds back
+on the same connection opened by the requestor.</p>
+
+<p>The machine running <b>slurmdbd</b> needs to be able to reach the
+MySQL or MariaDB server on port <u>3306</u> by default (the port is
+configurable on the database side).
+This port can be changed with the
+<a href="slurmdbd.conf.html#OPT_StoragePort">StoragePort</a> slurmdbd.conf
+parameter. It also needs to be able to initiate
+a connection to <b>slurmctld</b> on port 6819 by default (see the
+<a href="#slurmctld">slurmctld</a> section for information on how to
+change this).</p>
+
+<p>By default, the <b>slurmdbd</b> will listen for IPv4 traffic.  IPv6
+communication can be enabled by adding <u>EnableIPv6</u> to the
+<a href="slurmdbd.conf.html#OPT_CommunicationParameters">
+CommunicationParameters</a> in your slurmdbd.conf. With IPv6 enabled, you can
+disable IPv4 by adding <u>DisableIPv4</u> to the
+<a href="slurmdbd.conf.html#OPT_CommunicationParameters">
+CommunicationParameters</a>. These settings must match in both slurmdbd.conf
+and slurm.conf (see the <a href="#slurmctld">slurmctld</a> section).</p>
+
+<h2><a name="slurmd">Communication for slurmd</a></h2>
+
+<p>The default port used by <b>slurmd</b> to listen for incoming requests
+from <b>slurmctld</b> is <u>6818</u>. This port can be changed with the
+<a href="slurm.conf.html#OPT_SlurmdPort">SlurmdPort</a> slurm.conf
+parameter.</p>
+
+<p>The machines running <b>srun</b> also use a range of ports to be able
+to communicate with <b>slurmstepd</b>. By default these ports are chosen
+at random from the ephemeral port range, but you can use the
+<a href="slurm.conf.html#OPT_SrunPortRange">SrunPortRange</a> to specify
+a range of ports from which they can be chosen. This is necessary
+for login nodes that are behind a firewall.</p>
+
+<p>The machines running <b>slurmd</b> need to be able to establish
+connections with <b>slurmctld</b> on port <u>6817</u> by default (see
+the <a href="#slurmctld">slurmctld</a> section for information on how to
+change this).</p>
+
+<p>By default, the <b>slurmd</b> communicates over IPv4.  Please see the
+<a href="#slurmctld">slurmctld</a> section for details on how to change this
+as the slurm.conf parameter affects <b>slurmd</b> daemons as well.</p>
+
+<h2><a name="client">Communication for client commands</a></h2>
+
+<p>The majority of the client commands will communicate with <b>slurmctld</b>
+on port <u>6817</u> by default (see the <a href="#slurmctld">slurmctld</a>
+section for information on how to change this) to get the information they
+need. This includes the following commands:</p>
+<dl>
+<dd>salloc
+<dd>sacctmgr
+<dd>sbatch
+<dd>sbcast
+<dd>scancel
+<dd>scontrol
+<dd>sdiag
+<dd>sinfo
+<dd>sprio
+<dd>squeue
+<dd>sshare
+<dd>sstat
+<dd>strigger
+<dd>sview
+</dl>
+
+<p>There are also commands that communicate directly with <b>slurmdbd</b> on
+port <u>6819</u> by default (see the <a href="#slurmdbd">slurmdbd</a> section
+for information on how to change this). The following commands get information
+from <b>slurmdbd</b>:</p>
+<dl>
+<dd>sacct
+<dd>sacctmgr
+<dd>sreport
+</dl>
+
+<p>When a user starts a job using <b>srun</b> there has to be a communication
+path from the machine where <b>srun</b> is called to the node(s) the job is
+allocated. Communication follows the sequence outlined below:</p>
+
+<dl>
+    <dd>1a. srun sends job allocation request to slurmctld
+    <dd>1b. slurmctld grants allocation and returns details
+    <dd>2a. srun sends step create request to slurmctld
+    <dd>2b. slurmctld responds with step credential
+    <dd>3.  srun opens sockets for I/O
+    <dd>4.  srun forwards credential with task info to slurmd
+    <dd>5.  slurmd forwards request as needed (per fanout)
+    <dd>6.  slurmd forks/execs slurmstepd
+    <dd>7.  slurmstepd connects I/O and launches tasks
+    <dd>8.  On task termination, slurmstepd notifies srun
+    <dd>9.  srun notifies slurmctld of job termination
+    <dd>10. slurmctld verifies termination of all processes via slurmd and
+            releases resources for next job
+</dl>
+
+<div class="figure">
+  <img src="network_srun.gif" width="550"><br>
+  srun communication
+</div>
+
+<h2><a name="failover">Communication with multiple controllers</a></h2>
+
+<p>You can configure a secondary <b>slurmctld</b> and/or <b>slurmdbd</b> to
+serve as a fallback if the primary should go down. The ports involved don't
+change, but there are additional communication paths that need to be taken
+into consideration. The client commands need to be able to reach both
+machines running <b>slurmctld</b> as well as both machines running
+<b>slurmdbd</b>. Both instances of <b>slurmctld</b> need to be able to
+reach both instances of <b>slurmdbd</b> and each <b>slurmdbd</b> needs
+to be able to reach the MySQL server.</p>
+
+<div class="figure">
+  <img src="network_failover.gif" width="550"><br>
+  Fallback slurmctld and slurmdbd
+</div>
+
+<h2><a name="multi">Communication with multiple clusters</a></h2>
+
+<p>In environments where multiple <b>slurmctld</b> instances share the same
+<b>slurmdbd</b> you can configure each cluster to stand on their own and allow
+users to specify a cluster to submit their jobs to. Ports
+used by the different daemons don't change, but all instances of
+<b>slurmctld</b> need to be able to communicate with the same instance of
+<b>slurmdbd</b>. You can read more about multi cluster configurations in the
+<a href="multi_cluster.html#OPT_SlurmdPort">Multi-Cluster Operation</a>
+documentation.</p>
+
+<div class="figure">
+  <img src="network_multi_cluster.gif" width="550"><br>
+  Multi-Cluster configuration
+</div>
+
+<h2><a name="federation">Communication in a federation</a></h2>
+
+<p>Slurm also provides the ability to schedule jobs in a peer-to-peer fashion
+between multiple clusters, allowing jobs to run on the cluster that has
+available resources first. The difference in communication needs between this
+and a multi-cluster configuration is that the two instances of <b>slurmctld</b>
+need to be able to communicate with each other. There are more details about
+using a
+<a href="federation.html#OPT_SlurmdPort">Federation</a> in the
+documentation.</p>
+
+<div class="figure">
+  <img src="network_federation.gif" width="550"><br>
+  Federation configuration
+</div>
+
+<h2><a id="ipv6">Communication with IPv6</a></h2>
+
+<p>The <b>slurmctld</b>, <b>slurmdbd</b>, and <b>slurmd</b> daemons will,
+by default, communicate using IPv4, but they can be configured to use IPv6.
+This is handled by setting <b>CommunicationParameters=EnableIPv6</b>
+in your slurm.conf and slurmdbd.conf, then restarting all of the daemons.
+The <b>slurmd</b> may operate over IPv4 OR IPv6 in this mode. IPv4 can be
+disabled by setting <b>CommunicationParameters=EnableIPv6,DisableIPv4</b>.
+In is mode, everything must have a valid IPv6 address or the conection will
+fail.</p>
+
+<p>The <b>slurmctld</b> expects a node to map to a single IP address (which
+will be the first address returned when looking up the IP of the node with
+<b>getaddrinfo()</b>). If you enable IPv6 on an existing cluster and the
+nodes have IPv6 addresses, you must restart the <b>slurmd</b> daemons for
+communication over IPv6 to be established.</p>
+
+<p>The presence of <span>precedence ::ffff:0:0/96  100</span> in /etc/gai.conf
+will cause IPv4 addresses to be returned BEFORE an IPv6 address. This might
+cause a situation where you have enabled IPv6 for Slurm, but are still seeing nodes
+communicate with IPv4. If there is confusion as to which address is being used
+you can call <span>scontrol setdebugflags +NET</span> to enable network related
+debug logging in your slurmctld.log.</p>
+
+<p>If IPv4 and IPv6 are enabled, the loopback interface may still resolve to
+127.0.0.1. This is not necessarily an indication of a problem.</p>
+
+<p style="text-align:center;">Last modified 25 November 2020</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

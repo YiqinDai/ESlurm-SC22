@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - cli_filter Plugin API</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/cli_filter_plugins.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1><a name="top">cli_filter Plugin API</a></h1>
+
+<h2>Overview</h2>
+<p>This document describes Slurm cli_filter plugins and the API that
+defines them. It is intended as a resource to programmers wishing to write
+their own Slurm cli_filter plugins.</p>
+
+<p> The purpose of the cli_filter plugins is to provide programmatic hooks
+during the execution of the <b>salloc</b>, <b>sbatch</b>, and <b>srun</b>
+command line interface (CLI) programs. Three hooks are defined:
+<ul>
+<li><b>cli_filter_p_setup_defaults</b> &mdash;
+Called before any option processing is done,
+<i>per job component</i>, allowing a plugin to replace default option
+values.</li>
+<li><b>cli_filter_p_pre_submit</b> &mdash;
+Called after option processing <i>per job
+component</i> but before any communication
+is made with the slurm controller. This location
+is ideal for policy enforcement because the plugin can read all the options
+supplied by the user (as well as the environment) - thus invalid job requests
+can be stopped before they ever reach the slurmctld.</li>
+<li><b>cli_filter_p_post_submit</b> &mdash;
+Called after the jobid (and, in the case of
+<b>srun</b>, after the stepid) is generated, and typically before or in
+parallel with job execution.  In combination with data collected in the
+cli_filter_p_pre_submit() hook, this is an ideal location for logging
+activity.</li>
+</p>
+
+<p>
+cli_filter plugins vary from the <a href="job_submit_plugins.html">job_submit
+plugin</a> as it is entirely executed client-side, whereas job_submit is
+processed server-side (within the slurm controller). The benefit of the
+cli_filter is that it has access to all command line options in a simple and
+consistent interface as well as being safer to run disruptive operations
+(e.g., quota checks or other long running operations you might want to use
+for integrating policy decisions), which can be problematic if run from the
+controller. The disadvantage of the cli_filter is that it must not be relied
+upon for security purposes as an enterprising user can circumvent it simply
+by providing loading an alternate slurm.conf with the CliFilterPlugins option
+disabled. If you plan to use the cli_filter for managing policies, you should
+also configure a job_submit plugin to reinforce those policies.</p>
+
+<p>Slurm cli_filter plugins must conform to the
+Slurm Plugin API with the following specifications:</p>
+
+<p><span class="commandline">const char
+plugin_name[]="<i>full&nbsp;text&nbsp;name</i>"</span>
+<p style="margin-left:.2in">
+A free-formatted ASCII text string that identifies the plugin.
+
+<p><span class="commandline">const char
+plugin_type[]="<i>major/minor</i>"</span><br>
+<p style="margin-left:.2in">
+The major type must be &quot;cli_filter.&quot;
+The minor type can be any suitable name for the type of job submission package.
+We include samples in the Slurm distribution for
+<ul>
+<li><b>none</b> &mdash; An empty plugin with no actions taken, a useful starting
+template for a new plugin.</li>
+</ul>
+
+<p><span class="commandline">const uint32_t plugin_version</span><br>
+If specified, identifies the version of Slurm used to build this plugin and
+any attempt to load the plugin from a different version of Slurm will result
+in an error.
+If not specified, then the plugin may be loaded by Slurm commands and
+daemons from any version, however this may result in difficult to diagnose
+failures due to changes in the arguments to plugin functions or changes
+in other Slurm functions used by the plugin.</p>
+
+<p>Slurm can be configured to use multiple cli_filter plugins if desired,
+however the lua plugin will only execute one lua script named "cli_filter.lua"
+located in the default script directory (typically the subdirectory "etc" of
+the installation directory).</p>
+
+
+<h2>API Functions</h2>
+<p>All of the following functions are required. Functions which are not
+implemented must be stubbed.
+
+<p class="commandline">int init(void)
+<p style="margin-left:.2in"><b>Description</b>:<br>
+  Called when the plugin is loaded, before any other functions are
+  called. Put global initialization here.
+<p style="margin-left:.2in"><b>Returns</b>: <br>
+  <span class="commandline">SLURM_SUCCESS</span> on success, or<br>
+  <span class="commandline">SLURM_ERROR</span> on failure.</p>
+
+<p class="commandline">void fini(void)
+<p style="margin-left:.2in"><b>Description</b>:<br>
+  Called when the plugin is removed. Clear any allocated storage here.
+<p style="margin-left:.2in"><b>Returns</b>: None.</p>
+
+<p><b>Note</b>: These init and fini functions are not the same as those
+described in the <span class="commandline">dlopen (3)</span> system library.
+The C run-time system co-opts those symbols for its own initialization.
+The system <span class="commandline">_init()</span> is called before the Slurm
+<span class="commandline">init()</span>, and the Slurm
+<span class="commandline">fini()</span> is called before the system's
+<span class="commandline">_fini()</span>.</p>
+
+<p class="commandline">int cli_filter_p_setup_defaults(slurm_opt_t *options, bool early)
+<p style="margin-left:.2in"><b>Description</b>:<br>
+This function is called by the salloc, sbatch, or srun command line interface
+(CLI) programs shortly before processing any options from the environment,
+command line, or script (#SBATCH). The hook may be run multiple times per job
+component, once for an early pass (if implemented by the CLI), and again for
+the main pass.
+The options and early arguments are meant to be passed to <b>slurm_option_set()</b>
+which will set the option if it is in the appropriate pass. Failures to set
+an option may be a symptom of trying to set the option on the wrong pass. Given
+that you should not return SLURM_ERROR simply because of a failure to set an option.
+<p style="margin-left:.2in"><b>Arguments</b>: <br>
+<span class="commandline">options</span>
+(input) slurm option data structure; meant to be passed to the slurm_option_* API
+within <i>src/common/slurm_opt.h</i>.<br>
+<span class="commandline">early</span>
+(input) boolean indicating if this is the early pass or not; meant to be passed to
+the slurm_option_* API within <i>src/common/slurm_opt.h</i>.<br>
+<p style="margin-left:.2in"><b>Returns</b>: <br>
+<span class="commandline">SLURM_SUCCESS</span> on success, or<br>
+<span class="commandline">SLURM_ERROR</span> on failure, will terminate execution
+of the CLI.
+
+<p class="commandline">int cli_filter_p_pre_submit(slurm_opt_t *options, int offset)
+<p style="margin-left:.2in"><b>Description</b>:<br>
+This function is called by the CLI after option processing but before any
+communication with the slurmctld is made.  This is after all
+cli_filter_p_setup_defaults()
+hooks are executed (for the current job component), environment variables
+processed, command line options and #SBATCH directives interpreted.
+cli_filter_p_pre_submit() is called before any parts of
+the data structure are rewritten, so it is safe to
+both read and write or unset any options from the plugin that you desire.
+Note that cli_filter_p_post_submit() cannot safely read (or write) the options,
+so you should save any state for logging in cli_filter_p_post_submit() during
+cli_filter_p_pre_submit(). This function is called once per job component.
+<p style="margin-left:.2in"><b>Arguments</b>: <br>
+<span class="commandline">options</span>
+(input/output) the job allocation request specifications.<br>
+<span class="commandline">offset</span>
+(input) integer value for the current hetjob offset; should be used as a key when
+storing data for communication between cli_filter_p_pre_submit() and
+cli_filter_p_post_submit().<br>
+<p style="margin-left:.2in"><b>Returns</b>: <br>
+<span class="commandline">SLURM_SUCCESS</span> on success, or<br>
+<span class="commandline">SLURM_ERROR</span> on failure, will terminate execution
+of the CLI.
+
+<p class="commandline">void cli_filter_p_post_submit(int offset, uint32_t jobid, uint32_t stepid)
+<p style="margin-left:.2in"><b>Description</b>:<br>
+This function is called by the CLI after a jobid (and, if srun, a stepid) has
+been assigned by the controller.  It is no longer safe to read or write to the
+options data structure, so it has been removed from this function.  You should
+save any state you need in cli_filter_p_pre_submit() using het_job_offset as a
+key, since the function is called separately for every job component, and access
+it here.
+<p style="margin-left:.2in"><b>Arguments</b>: <br>
+<span class="commandline">offset</span>
+(input) integer value for the current hetjob offset; should be used as a key
+when storing data for communication between cli_filter_p_pre_submit() and
+cli_filter_p_post_submit().<br>
+<span class="commandline">jobid</span>
+(input) job id of the job<br>
+<span class="commandline">stepid</span>
+(input) step id of the job if appropriate, NO_VAL otherwise<br>
+
+<p style="text-align:center;">Last modified 26 February 2021</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

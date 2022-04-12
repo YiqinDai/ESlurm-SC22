@@ -1,0 +1,110 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Simple CUDA test
+############################################################################
+# Copyright (C) 2019 SchedMD LLC
+# Written by Morris Jette
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+############################################################################
+source ./globals
+
+set file_in     "test$test_id.input"
+set file_out    "test$test_id.output"
+set file_prog   "test$test_id.prog"
+set job_id      0
+
+proc cleanup {} {
+	global bin_rm file_in file_out file_prog
+
+	exec $bin_rm -f $file_in $file_out $file_prog
+}
+
+set gpu_cnt [get_highest_gres_count 1 "gpu"]
+if {$gpu_cnt < 1} {
+	skip "This test requires 1 or more GPUs on 1 node of the default partition"
+}
+log_debug "GPUs per node count is $gpu_cnt"
+
+#
+# Build input script file
+#
+exec $bin_rm -f $file_in $file_out $file_prog
+make_bash_script $file_in "
+ls $nvcc
+$nvcc ${file_prog}.cu -o $file_prog
+./$file_prog"
+
+#
+# Spawn a batch job to build and run CUDA job
+#
+spawn $sbatch --output=$file_out -N1 --gres=gpu:1 -t1 ./$file_in
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$job_id == 0} {
+	fail "Batch not submitted"
+}
+
+#
+# Wait for job to complete and check for file
+#
+if {[wait_for_job $job_id "DONE"] != 0} {
+	cancel_job $job_id
+	fail "Waiting for job to complete"
+}
+if {[wait_for_file $file_out] == 0} {
+	set matches 0
+	set no_nvcc 0
+	spawn $bin_cat $file_out
+	expect {
+		-re "No such file" {
+			incr no_nvcc
+			exp_continue
+		}
+		-re "Could not find" {
+			incr no_nvcc
+			exp_continue
+		}
+		-re "Max error: 0" {
+			incr matches
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	if {$no_nvcc != 0} {
+		log_warn "Could not find program nvcc (CUDA compiler)"
+	} elseif {$matches != 1} {
+		fail "CUDA output not as expected"
+	}
+} else {
+	fail "Failed waiting for file ($file_out)"
+}

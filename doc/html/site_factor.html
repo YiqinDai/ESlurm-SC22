@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Slurm Priority Site Factor Plugin API</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/site_factor.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1><a name="top">Slurm Priority Site Factor Plugin API</a></h1>
+
+<h2>Overview</h2>
+<p> This document describes Slurm site_factor plugins and the API that defines
+them. It is intended as a resource to programmers wishing to write their own
+Slurm site_factor plugins.</p>
+
+<p>Slurm site_factor plugins are Slurm plugins that implement the Slurm
+site_factor API described herein. They are designed to provide the site a
+way to build a custom multifactor priority factor, and will only be loaded
+and operation alongside
+<span class="commandline">PriorityType=priority/multifactor</span>.</p>
+
+<p>The plugins are meant to set and update the
+<span class="commandline">site_factor</span> value in the
+<span class="commandline">job_record_t</span> corresponding to a given job.
+Note that the <span class="commandline">site_factor</span> itself is an
+unsigned integer, but uses <span class="commandline">NICE_OFFSET</span> as
+an offset to allow the value to be positive or negative. The plugin itself
+must add <span class="commandline">NICE_OFFSET</span> to the value stored to
+<span class="commandline">site_factor</span> for proper operation, otherwise
+the value itself will be extremely negative, and the job priority will likely
+drop to 1. (The lowest value that does not correspond to a held job.)</p>
+
+<p>Plugins must conform to the Slurm Plugin API with the following
+specifications:</p>
+
+<p><span class="commandline">const char plugin_type[]="<i>major/minor</i>"</span><br>
+The major type must be &quot;site_factor&quot; The minor type can be any
+recognizable abbreviation for the specific plugin.</p>
+
+
+<p><span class="commandline">const char plugin_name[]</span><br>
+Some descriptive name for the plugin.
+There is no requirement with respect to its format.</p>
+<p><span class="commandline">const uint32_t plugin_version</span><br>
+If specified, identifies the version of Slurm used to build this plugin and
+any attempt to load the plugin from a different version of Slurm will result
+in an error.
+If not specified, then the plugin may be loaded by Slurm commands and
+daemons from any version, however this may result in difficult to diagnose
+failures due to changes in the arguments to plugin functions or changes
+in other Slurm functions used by the plugin.</p>
+
+<h2>API Functions</h2>
+<p>The following functions must appear. Functions which are not implemented
+must be stubbed, or the plugin will fail to load.</p>
+
+<p class="commandline">int init(void)
+<p style="margin-left:.2in"><b>Description</b>:<br>
+  Called when the plugin is loaded, before any other functions are
+  called. Put global initialization here.
+<p style="margin-left:.2in"><b>Returns</b>: <br>
+  <span class="commandline">SLURM_SUCCESS</span> on success, or<br>
+  <span class="commandline">SLURM_ERROR</span> on failure.</p>
+
+<p class="commandline">void fini(void)
+<p style="margin-left:.2in"><b>Description</b>:<br>
+  Called when the plugin is removed. Clear any allocated storage here.
+<p style="margin-left:.2in"><b>Returns</b>: None.</p>
+
+<p><b>Note</b>: These init and fini functions are not the same as those
+described in the <span class="commandline">dlopen (3)</span> system library.
+The C run-time system co-opts those symbols for its own initialization.
+The system <span class="commandline">_init()</span> is called before the Slurm
+<span class="commandline">init()</span>, and the Slurm
+<span class="commandline">fini()</span> is called before the system's
+<span class="commandline">_fini()</span>.</p>
+
+<p class="commandline">void site_factor_p_reconfig(void)</p>
+<p style="margin-left:.2in"><b>Description</b>: Refresh the plugin's
+configuration. Called whenever slurmctld is reconfigured.</p>
+<p style="margin-left:.2in"><b>Returns</b>: void</p>
+
+<p class="commandline">void site_factor_p_set(job_record_t *job_ptr)</p>
+<p style="margin-left:.2in"><b>Description</b>: Sets the site_priority of the job, if desired.</p>
+<p style="margin-left:.2in"><b>Arguments</b>:<br>
+<span class="commandline">job_ptr</span> (input) pointer to the job record.</p>
+<p style="margin-left:.2in"><b>Returns</b>: void</p>
+
+<p class="commandline">void site_factor_p_update(void)</p>
+<p style="margin-left:.2in"><b>Description</b>: Handle periodic updates to
+all site_priority values in the job_list. Called every </p>
+<p style="margin-left:.2in"><b>Returns</b>: void</p>
+
+<h2>Parameters</h2>
+<p>These parameters can be used in the slurm.conf to configure the
+plugin and the frequency at which to gather information about running jobs.</p>
+<dl>
+<dt><span class="commandline">PrioritySiteFactorParameters</span></dt>
+<dd>Optional parameters for the site_factor plugin. Interpretation of any
+value is left to the site_factor plugin itself.</dd>
+<dt><span class="commandline">PrioritySiteFactorPlugin</span></dt>
+<dd>Specifies which plugin should be used.</dd>
+<dt><span class="commandline">PriorityCalcPeriod</span></dt>
+<dd>Interval between calls to
+<span class="commandline">site_factor_p_update()</span></dd>
+</dl>
+
+<p style="text-align:center;">Last modified 23 October 2019</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

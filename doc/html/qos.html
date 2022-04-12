@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Quality of Service (QOS)</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/qos.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1>Quality of Service (QOS)</h1>
+
+<p>One can specify a Quality of Service (QOS) for each job submitted
+to Slurm.  The quality of service associated with a job will affect
+the job in three ways:</p>
+
+<ul>
+<li> <a href=#priority>Job Scheduling Priority</a>
+<li> <a href=#preemption>Job Preemption</a>
+<li> <a href=#limits>Job Limits</a>
+<li> <a href=#partition>Partition QOS</a>
+<li> <a href=#qos_other>Other QOS Options</a>
+</ul>
+
+<p>The QOS's are defined in the Slurm database using the <i>sacctmgr</i>
+utility.</p>
+
+<P> Jobs request a QOS using the "--qos=" option to the
+<i>sbatch</i>, <i>salloc</i>, and <i>srun</i> commands.</P>
+
+<!-------------------------------------------------------------------------->
+<a id=priority>
+<h2>Job Scheduling Priority</h2></a>
+
+<p>Job scheduling priority is made up of a number of factors as
+described in the <a
+href="priority_multifactor.html">priority/multifactor</a> plugin.  One
+of the factors is the QOS priority.  Each QOS is defined in the Slurm
+database and includes an associated priority.  Jobs that request and
+are permitted a QOS will incorporate the priority associated with that
+QOS in the job's <a
+href="priority_multifactor.html#general">multi-factor priority
+calculation.</a></p>
+
+<p>To enable the QOS priority component of the multi-factor priority
+calculation, the "PriorityWeightQOS" configuration parameter must be
+defined in the slurm.conf file and assigned an integer value greater
+than zero.</p>
+
+<P> A job's QOS only affects is scheduling priority when the
+multi-factor plugin is loaded.</P>
+
+<!-------------------------------------------------------------------------->
+<a id=preemption>
+<h2>Job Preemption</h2></a>
+
+<p>Slurm offers two ways for a queued job to preempt a running job,
+free-up the running job's resources and allocate them to the queued
+job.  See the <a href="preempt.html"> Preemption description</a> for
+details.</p>
+
+<p>The preemption method is determined by the "PreemptType"
+configuration parameter defined in slurm.conf.  When the "PreemptType"
+is set to "preempt/qos", a queued job's QOS will be used to determine
+whether it can preempt a running job.</p>
+
+<P> The QOS can be assigned (using <i>sacctmgr</i>) a list of other
+QOS's that it can preempt.  When there is a queued job with a QOS that
+is allowed to preempt a running job of another QOS, the Slurm
+scheduler will preempt the running job.</P>
+
+<P> The QOS option PreemptExemptTime specifies the minimum run time before the
+job is considered for preemption. The QOS option takes precedence over the
+global option of the same name.</P>
+
+<!-------------------------------------------------------------------------->
+<a id=limits>
+<h2>Job Limits</h2></a>
+
+<p>Each QOS is assigned a set of limits which will be applied to the
+job.  The limits mirror the limits imposed by the
+user/account/cluster/partition association defined in the Slurm
+database and described in the <a href="resource_limits.html"> Resource
+Limits section</a>.  When limits for a QOS have been defined, they
+will take precedence over the association's limits.</p>
+
+<!-------------------------------------------------------------------------->
+<a id=partition>
+<h2>Partition QOS</h2></a>
+<p>A QOS can be attached to a partition.  This means a partition will have all
+the same limits as a QOS.  This also gives the ability of a true 'floating'
+partition, meaning if you assign all the nodes to a partition and then in the
+Partition's QOS limit the number of GrpCPUs or GrpNodes the partition will have
+access to all the nodes, but only be able to run on the number of
+resources in it.</p>
+
+<p>The Partition QOS will override the job's QOS.  If the opposite is
+desired you need to have the job's QOS have the 'OverPartQOS' flag
+which will reverse the order of precedence.</p>
+
+
+<!-------------------------------------------------------------------------->
+<a id=qos_other>
+<h2>Other QOS Options</h2></a>
+<ul>
+<li><b>Flags</b> Used by the slurmctld to override or enforce certain
+characteristics. Valid options are:
+
+<ul>
+<li><b>DenyOnLimit</b> If set, jobs using this QOS will be rejected at
+submission time if they do not conform to the QOS 'Max' limits.  Group
+limits will also be treated like 'Max' limits as well and will be
+denied if they go over. By default jobs that go over these limits
+will pend until they conform.  This currently only applies to QOS and
+Association limits.
+
+<li><b>EnforceUsageThreshold</b> If set, and the QOS also has a UsageThreshold,
+any jobs submitted with this QOS that fall below the UsageThreshold
+will be held until their Fairshare Usage goes above the Threshold.
+
+<li><b>NoReserve</b> If this flag is set and backfill scheduling is used,
+jobs using this QOS will not reserve resources in the backfill
+schedule's  map of resources allocated through time. This flag is
+intended for use with a QOS that may be preempted by jobs associated
+with all other QOS (e.g use with a "standby" QOS). If this flag is
+used with a QOS which can not be preempted by all other QOS, it could
+result in starvation of larger jobs.
+
+<li><b>PartitionMaxNodes</b> If set, jobs using this QOS will be able to
+override the requested partition's MaxNodes limit.
+
+<li><b>PartitionMinNodes</b> If set, jobs using this QOS will be able to
+override the requested partition's MinNodes limit.
+
+<li><b>OverPartQOS</b> If set, jobs using this QOS will be able to
+override any limits used by the requested partition's QOS limits.
+
+<li><b>PartitionTimeLimit</b> If set, jobs using this QOS will be able to
+override the requested partition's TimeLimit.
+
+<li><b>RequiresReservaton</b> If set, jobs using this QOS must designate a
+reservation when submitting a job.  This option can be useful in
+restricting usage of a QOS that may have greater preemptive capability
+or additional resources to be allowed only within a reservation.
+
+<li><b>NoDecay</b> If set, this QOS will not have its GrpTRESMins,
+GrpWall and UsageRaw decayed by the slurm.conf PriorityDecayHalfLife
+or PriorityUsageResetPeriod settings.  This allows
+a QOS to provide aggregate limits that, once consumed, will not be
+replenished automatically.  Such a QOS will act as a time-limited quota
+of resources for an association that has access to it.  Account/user
+usage will still be decayed for associations using the QOS.  The QOS
+GrpTRESMins and GrpWall limits can be increased or
+the QOS RawUsage value reset to 0 (zero) to again allow jobs submitted
+with this QOS to be queued (if DenyOnLimit is set) or run (pending with
+QOSGrp{TRES}MinutesLimit or QOSGrpWallLimit
+reasons, where {TRES} is some type of trackable resource).
+
+<li><b>UsageFactorSafe</b> If set, and <b>AccountingStorageEnforce</b> includes
+<b>Safe</b>, jobs will only be able to run if the job can run to completion
+with the <b>UsageFactor</b> applied.
+</ul>
+
+<li><b>GraceTime</b> Preemption grace time to be extended to a job
+  which has been selected for preemption.
+
+<li><p><b>UsageFactor</b>
+A float that is factored into a job’s TRES usage (e.g. RawUsage, TRESMins,
+TRESRunMins). For example, if the usagefactor was 2, for every TRESBillingUnit
+second a job ran it would count for 2. If the usagefactor was .5, every second
+would only count for half of the time. A setting of 0 would add no timed usage
+from the job.
+</p>
+
+<p>
+The usage factor only applies to the job's QOS and not the partition QOS.
+</p>
+
+<p>
+If the <b>UsageFactorSafe</b> flag <b>is</b> set and
+<b>AccountingStorageEnforce</b> includes <b>Safe</b>, jobs will only be
+able to run if the job can run to completion with the <b>UsageFactor</b>
+applied.
+</p>
+
+<p>
+If the <b>UsageFactorSafe</b> flag is <b>not</b> set and
+<b>AccountingStorageEnforce</b> includes <b>Safe</b>, a job will be able to be
+scheduled without the <b>UsageFactor</b> applied and will be able to run
+without being killed due to limits.
+</p>
+
+<p>
+If the <b>UsageFactorSafe</b> flag is <b>not</b> set and
+<b>AccountingStorageEnforce</b> does not include <b>Safe</b>, a job will be
+able to be scheduled without the <b>UsageFactor</b> applied and could be killed
+due to limits.
+</p>
+
+<p>
+See <b>AccountingStorageEnforce</b> in slurm.conf man page.
+</p>
+
+<p>
+Default is 1. To clear a previously set value use the modify command with a new
+value of -1.
+</p>
+
+<li><b>UsageThreshold</b>
+A float representing the lowest fairshare of an association allowable
+to run a job.  If an association falls below this threshold and has
+pending jobs or submits new jobs those jobs will be held until the
+usage goes back above the threshold.  Use <i>sshare</i> to see current
+shares on the system.
+</ul>
+
+<h2>Configuration</h2>
+
+<P> To summarize the above, the QOS's and their associated limits are
+defined in the Slurm database using the <i>sacctmgr</i> utility.  The
+QOS will only influence job scheduling priority when the multi-factor
+priority plugin is loaded and a non-zero "PriorityWeightQOS" has been
+defined in the slurm.conf file.  The QOS will only determine job
+preemption when the "PreemptType" is defined as "preempt/qos" in the
+slurm.conf file.  Limits defined for a QOS (and described above) will
+override the limits of the user/account/cluster/partition
+association.</P>
+
+<h2>QOS examples</h2>
+
+<p>QOS manipulation examples. All QOS operations are done using
+the sacctmgr command. The default output of 'sacctmgr show qos' is
+very long given the large number of limits and options available
+so it is best to use the format option which filters the display.</p>
+
+<p>By default when a cluster is added to the database a default
+qos named normal is created.</p>
+
+<pre>
+$ sacctmgr show qos format=name,priority
+      Name   Priority
+---------- ----------
+    normal          0
+</pre>
+
+<p>Add a new QOS</p>
+
+<pre>
+$ sacctmgr add qos zebra
+ Adding QOS(s)
+  zebra
+ Settings
+  Description    = QOS Name
+
+$ sacctmgr show qos format=name,priority
+      Name   Priority
+---------- ----------
+    normal          0
+     zebra          0
+</pre>
+
+<p>Set QOS priority</p>
+
+<pre>
+$ sacctmgr modify qos zebra set priority=10
+ Modified qos...
+  zebra
+
+$ sacctmgr show qos format=name,priority
+      Name   Priority
+---------- ----------
+    normal          0
+     zebra         10
+</pre>
+
+<p>Set some other limits</p>
+
+<pre>
+$ sacctmgr modify qos zebra set GrpCPUs=24
+ Modified qos...
+  zebra
+
+$ sacctmgr show qos format=name,priority,GrpCPUs
+      Name   Priority  GrpCPUs
+---------- ---------- --------
+    normal          0
+     zebra         10       24
+</pre>
+
+<p>Add a QOS to a user account</p>
+
+<pre>
+$ sacctmgr modify user crock set qos=zebra
+
+$ sacctmgr show assoc format=cluster,user,qos
+   Cluster       User                  QOS
+---------- ---------- --------------------
+canis_major                          normal
+canis_major      root                normal
+canis_major                          normal
+canis_major     crock                zebra
+</pre>
+
+<p>Users can belong to multiple QOS's</p>
+
+<pre>
+$ sacctmgr modify user crock set qos+=alligator
+$ sacctmgr show assoc format=cluster,user,qos
+   Cluster       User                  QOS
+---------- ---------- --------------------
+canis_major                          normal
+canis_major      root                normal
+canis_major                          normal
+canis_major     crock       alligator,zebra
+
+</pre>
+
+<p>Finally, delete a QOS</p>
+
+<pre>
+$ sacctmgr delete qos alligator
+ Deleting QOS(s)...
+  alligator
+</pre>
+
+<p style="text-align: center;">Last modified 9 April 2021</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Cgroups Guide</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/cgroups.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1>Cgroups Guide</h1>
+
+<h2>Cgroups Overview</h2>
+<p>For a comprehensive description of Linux Control Groups (cgroups) see the
+<a href="https://www.kernel.org/doc/Documentation/cgroup-v1/cgroups.txt"> 
+cgroups documentation</A> at kernel.org. Detailed knowledge of cgroups is not
+required to use cgroups in Slurm, but a basic understanding of the
+following features of cgroups is helpful:</p>
+<ul>
+<li><b>Cgroup</b> - a container for a set of processes subject to common
+controls or monitoring, implemented as a directory and a set of files
+(state objects) in the cgroup
+virtual filesystem.</li>
+<li><b>Subsystem</b> - a module, typically a resource controller, that applies
+a set of parameters to the cgroups in a hierarchy.</li>
+<li><b>Hierarchy</b> - a set of cgroups organized in a tree structure, with one
+or more associated subsystems.</li>
+<li><b>State Objects</b> - pseudofiles that represent the state of a cgroup or
+apply controls to a cgroup:
+<ul>
+<li><i>tasks</i> - identifies the processes (PIDs) in the cgroup.
+<li>additional state objects specific to each subsystem.</li>
+</ul>
+</ul>
+
+<h2>General Usage Notes</h2>
+<ul>
+<li>There can be a serious performance problem with memory cgroups
+on conventional multi-socket, multi-core nodes in kernels prior to 2.6.38 due
+to contention between processors for a spinlock.  This problem seems to have
+been completely fixed in the 2.6.38 kernel.</li>
+<li>Debian and derivatives (e.g. Ubuntu) usually exclude the memory and memsw
+ (swap) cgroups by default.  To include them, add the following parameters to
+the kernel command line: <pre>cgroup_enable=memory swapaccount=1</pre>
+This can usually be placed in /etc/default/grub inside the
+<i>GRUB_CMDLINE_LINUX</i> variable.  A command such as <i>update-grub</i> must
+be run after updating the file.</li>
+<li>Linux allows you to use the JoinControllers parameters to have multiple
+controllers mounted in a single hierarchy, however Slurm does not work
+correctly with this configuration. Please make sure your system.conf does
+not use JoinControllers.</li>
+</ul>
+
+<h2>Use of Cgroups in Slurm</h2>
+<p>Slurm provides cgroup versions of a number of plugins.</p>
+<ul>
+<li>proctrack (process tracking)</li>
+<li>task (task management)</li>
+<li>jobacct_gather (job accounting statistics)</li>
+The cgroup plugins can provide a number of benefits over the
+other more standard plugins, as described below.
+</ul>
+<p>Slurm also uses cgroups for resource specialization.</p>
+
+<h2>Slurm Cgroups Configuration Overview</h2>
+<p>There are several sets of configuration options for Slurm cgroups:</p>
+<ul>
+<li><a href="slurm.conf.html">slurm.conf</a> provides options to enable the
+cgroup plugins. Each plugin may be enabled or disabled independently
+of the others.</li>
+<li><a href="cgroup.conf.html">cgroup.conf</a> provides general options that
+are common to all cgroup plugins, plus additional options that apply only to
+specific plugins.</li>
+<li>System-level resource specialization is enabled using node configuration 
+parameters.</li>
+</ul>
+<a name="available"></a>
+
+<h2>Currently Available Cgroup Plugins</h2>
+
+<h3>proctrack/cgroup plugin</h3>
+<p>The proctrack/cgroup plugin is an alternative to other proctrack
+plugins such as proctrack/linux for process tracking and
+suspend/resume capability. proctrack/cgroup uses the freezer subsystem
+which is more reliable for tracking and control than proctrack/linux.</p>
+<p>To enable this plugin, configure the following option in slurm.conf:
+<pre>ProctrackType=proctrack/cgroup</pre>
+</p>
+<p>There are no specific options for this plugin in cgroup.conf, but the general
+options apply. See the <a href="cgroup.conf.html">cgroup.conf</a> man page for
+details.</p>
+
+<h3>task/cgroup plugin</h3>
+<p>The task/cgroup plugin is an alternative to other task plugins such as
+the task/affinity plugin for task management. task/cgroup provides the
+following features:</p>
+<ul>
+<li>The ability to confine jobs and steps to their allocated cpuset.</li>
+<li>The ability to bind tasks to sockets, cores and threads within their step's
+allocated cpuset on a node.</li>
+<ul>
+<li>Supports block and cyclic distribution of allocated cpus to tasks for
+binding.</li>
+</ul>
+<li>The ability to confine jobs and steps to specific memory resources.</li>
+<li>The ability to confine jobs to their allocated set of generic resources
+(gres devices).</li>
+</ul>
+<p>The task/cgroup plugin uses the cpuset, memory and devices subsystems.</p>
+<p>To enable this plugin, configure the following option in slurm.conf:
+<pre>TaskPlugin=task/cgroup</pre></p>
+<p>There are many specific options for this plugin in cgroup.conf.  The general
+options also apply. See the <a href="cgroup.conf.html">cgroup.conf</a> man page
+for details.</p>
+
+<h3>jobacct_gather/cgroup plugin</h3>
+<p>
+The jobacct_gather/cgroup plugin is an alternative to the jobacct_gather/linux
+plugin for the collection of accounting statistics for jobs, steps and tasks.
+jobacct_gather/cgroup uses the cpuacct, memory and blkio subsystems. Note: the
+cpu and memory statistics collected by this plugin do not represent the same
+resources as the cpu and memory statistics collected by the
+jobacct_gather/linux plugin (sourced from /proc stat). While originally
+thought to be faster, in practice it has been proven to be slower than the
+jobacct_gather/linux plugin.
+<p>To enable this plugin, configure the following option in slurm.conf:
+<pre>JobacctGatherType=jobacct_gather/cgroup</pre>
+</p>
+<p>There are no specific options for this plugin in cgroup.conf, but the general
+options apply. See the <a href="cgroup.conf.html">cgroup.conf</a> man page for
+details.</p>
+
+<h2>Use of Cgroups for Resource Specialization</h2>
+<p>Resource Specialization may be used to reserve a subset of cores on each compute 
+node for exclusive use by the Slurm compute node daemons (slurmd, slurmstepd).
+It may also be used to apply a real memory limit to the daemons. The daemons are
+confined to the reserved cores using a special <i>system</i> cgroup in the 
+cpuset hierarchy. The memory limit is enforced using a <i>system</i> cgroup 
+in the memory hierarchy. System-level resource specialization is enabled with 
+special node configuration parameters in 
+<a href="slurm.conf.html">slurm.conf</a> and core specialization in
+<a href="core_spec.html">core_spec.html</a>.
+<h2>Organization of Slurm Cgroups</h2>
+<p>Slurm cgroups are organized as follows.  A base directory (mount point) is
+created at /sys/fs/cgroup, or as configured by the <i>CgroupMountpoint</I> option in
+<a href="cgroup.conf.html">cgroup.conf</a>. All cgroup
+hierarchies are created below this base directory. A separate hierarchy is
+created for each cgroup subsystem in use. The name of the root cgroup in each
+hierarchy is the subsystem name. A cgroup named <i>slurm</i> is created below
+the root cgroup in each hierarchy. Below each <i>slurm</i> cgroup, cgroups for
+Slurm users, jobs, steps and tasks are created dynamically as needed. The names
+of these cgroups consist of a prefix identifying the Slurm entity (user, job,
+step or task), followed by the relevant numeric id. The following example shows
+the path of the task cgroup in the cpuset hierarchy for taskid#2 of stepid#0 of
+jobid#123 for userid#100, using the default base directory (/sys/fs/cgroup):
+<p><pre>/cgroup/cpuset/slurm/uid_100/job_123/step_0/task_2</pre></p>
+<p>If resource specialization is configured, a special <i>system</i> cgroup 
+is created below the <i>slurm</i> cgroup in the cpuset and memory 
+hierarchies:</p>
+<pre>/sys/fs/cgroup/cpuset/slurm/system
+/sys/fs/cgroup/memory/slurm/system</pre>
+<p>Note that all these structures apply to a specific compute node. Jobs that 
+use more than one node will have a cgroup structure on each node.</p>
+
+
+<p style="text-align:center;">Last modified 16 June 2020</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

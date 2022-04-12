@@ -1,0 +1,111 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Test of --depend=afterburstbuffer option
+############################################################################
+# Copyright (C) 2015-2018 SchedMD LLC.
+# Written by Morris Jette <jette(at)schedmd.com>
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set exit_code      0
+set output_child   "test$test_id.child.output"
+set output_parent  "test$test_id.parent.output"
+set script_child   "test$test_id.child.bash"
+set script_parent  "test$test_id.parent.bash"
+
+proc cleanup {} {
+	global bin_rm script_child script_parent
+	global output_child output_parent
+
+	exec $bin_rm -f $script_child $script_parent
+	exec $bin_rm -f $output_child $output_parent
+}
+
+if {[get_my_uid] == 0} {
+	skip "This test can't be run as user root"
+}
+
+set bb_types [get_bb_types]
+if {[string first "datawarp" $bb_types] == -1} {
+	skip "This test can only be run with the burst_buffer/datawarp plugin"
+}
+
+exec $bin_rm -f $output_child $output_parent
+
+make_bash_script $script_parent "#DW jobdw type=scratch capacity=1GiB access_mode=striped,private type=scratch
+$sbatch --depend=afterburstbuffer:\$SLURM_JOB_ID -t1 -n1 --output=$output_child $script_child \$SLURM_JOB_ID
+sleep 15
+exit 0"
+
+make_bash_script $script_child "$scontrol show job \$1"
+
+set job_id_use 0
+spawn $sbatch -t1 -N1 --output=$output_parent $script_parent
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id_parent $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$job_id_parent == 0} {
+	log_error "Job did not launch"
+	set exit_code 1
+} elseif {[wait_for_job -timeout 660 $job_id_parent "DONE"] != 0} {
+	log_error "Job did not complete"
+	set exit_code 1
+	cancel_job $job_id_parent
+} elseif {[wait_for_file -timeout 660 $output_child] != 0} {
+	set exit_code 1
+}
+if {$exit_code != 0} {
+	log_error "Job did not launch"
+	set exit_code 1
+}
+
+# Wait for purge of buffer to complete
+sleep 10
+
+set found 0
+spawn $bin_cat $output_child
+expect {
+	-re "JobState=COMPLETED" {
+		set found 1
+		exp_continue
+	}
+	eof {
+		wait
+	}
+}
+if {$found == 0} {
+	fail "Dependent job not completed"
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

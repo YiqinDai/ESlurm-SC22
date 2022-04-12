@@ -1,0 +1,274 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          sacctmgr show problems
+############################################################################
+# Copyright (C) 2010 Lawrence Livermore National Security.
+# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+# Written by Joseph Donaghy <donaghy1@llnl.gov>
+# CODE-OCEC-09-009. All rights reserved.
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set tc1		"test$test_id-cluster-1"
+set tc2		"test$test_id-cluster-2"
+set ta1		"test$test_id-account.1"
+set ta2		"test$test_id-account.2"
+set ta3		"test$test_id-account.3"
+set tu1         "test$test_id-user.1"
+set tu2         "test$test_id-user.2"
+set tu3		mysql
+
+set access_err  0
+set timeout     120
+
+#
+# Check accounting config and bail if not found.
+#
+if {[get_config_param "AccountingStorageType"] ne "accounting_storage/slurmdbd"} {
+	skip "This test can't be run without a usable AccountStorageType"
+}
+
+if {[string compare [get_admin_level] "Administrator"]} {
+	skip "This test can't be run without being an Accounting administrator.\nUse: sacctmgr mod user \$USER set admin=admin"
+}
+
+#
+# Delete
+#
+spawn $sacctmgr -i delete user $tu1,$tu2,$tu3
+expect {
+	timeout {
+		fail "sacctmgr delete user not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i delete account $ta1,$ta2,$ta3
+expect {
+	 timeout {
+		fail "sacctmgr delete account not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i delete cluster $tc1,$tc2
+expect {
+	 timeout {
+		fail "sacctmgr delete cluster not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+
+#
+# Build test associations
+#
+spawn $sacctmgr -i add cluster $tc1
+expect {
+	 timeout {
+		fail "sacctmgr add cluster not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i add account $ta1 cluster=$tc1
+expect {
+	 timeout {
+		fail "sacctmgr add account $ta1 not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i add account $ta2 parent=$ta1 cluster=$tc1
+expect {
+	 timeout {
+		fail "sacctmgr add account $ta2 not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i add user $tu1 account=$ta1 cluster=$tc1
+expect {
+	 timeout {
+		fail "sacctmgr add user $tu1 not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i add user $tu2 account=$ta1 cluster=$tc1
+expect {
+	 timeout {
+		fail "sacctmgr add user $tu2 not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i add user $tu3 account=$ta2 cluster=$tc1
+expect {
+	 timeout {
+		fail "sacctmgr add user $tu3 not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i delete cluster $tc1
+expect {
+	 timeout {
+		fail "sacctmgr delete cluster $tc1  not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i add cluster $tc2
+expect {
+	 timeout {
+		fail "sacctmgr add cluster $tc2  not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr -i add account $ta3 cluster=$tc2
+expect {
+	 timeout {
+		fail "sacctmgr add account $ta3  not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+spawn $sacctmgr show problem
+expect {
+	 timeout {
+		fail "sacctmgr show problem  not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+
+#
+# Test for problems
+#
+	set exit_code 0
+	set matches 0
+	set nothing 0
+
+	set my_pid [spawn $sacctmgr -p show problem]
+	expect {
+		-re "$ta1..Account has no Associations" {
+			incr matches
+			exp_continue
+		}
+		-re "$ta2..Account has no Associations" {
+			incr matches
+			exp_continue
+		}
+		-re "$tc2.$ta3..Account has no users" {
+			incr matches
+			exp_continue
+		}
+		-re "$tu3.User has no Associations" {
+			incr matches
+			exp_continue
+		}
+		-re "$tu1.User does not have a uid" {
+			incr matches
+			exp_continue
+		}
+		-re "$tu2.User does not have a uid" {
+			incr matches
+			exp_continue
+		}
+
+		timeout {
+			slow_kill $my_pid
+			fail "sacctmgr show not responding"
+		}
+		eof {
+			wait
+		}
+	}
+
+	if {$matches != 6} {
+		log_error "sacctmgr found $matches of 6 problems"
+		incr exit_code 1
+	}
+
+
+#
+# Delete
+#
+spawn $sacctmgr -i delete user $tu1,$tu2,$tu3
+expect {
+	 timeout {
+		fail "sacctmgr delete users not responding"
+	}
+	eof {
+		wait
+	}
+}
+spawn $sacctmgr -i delete account $ta1,$ta2,$ta3
+expect {
+	 timeout {
+		fail "sacctmgr delete accounts not responding"
+	}
+	eof {
+		wait
+	}
+}
+spawn $sacctmgr -i delete cluster $tc1,$tc2
+expect {
+	 timeout {
+		fail "sacctmgr delete clusters not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors"
+}

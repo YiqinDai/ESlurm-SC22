@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Workload Characterization Key (WCKey) Management</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/wckey.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1>Workload Characterization Key (WCKey) Management</h1>
+
+<p>A WCKey is an orthogonal way to do accounting against possibly
+  unrelated accounts. This can be useful where users from different
+  accounts are all working on the same project.
+</p>
+
+<h2>slurm(dbd).conf settings</h2>
+<p>Including "WCKey" in your <b>AccountingStorageEnforce</b> option in
+  your slurm.conf file will enforce WCKeys per job.  This means only
+  jobs with valid WCKeys (WCKeys previously added through sacctmgr)
+  will be allowed to run.
+<p>
+<p>If you wish to track the value of a jobs WCKey you must set
+  the <b>TrackWCKey</b> option in both the slurm.conf as well as the
+  slurmdbd.conf files.  This will assure the WCKey is tracked on each
+  job.  If you set "WCKey" in your <b>AccountingStorageEnforce</b>
+  line <b>TrackWCKey</b> is set automatically, it still needs to be
+  added to your slurmdbd.conf file though.
+</p>
+
+<h2>sbatch/salloc/srun</h2>
+<p> Each submitting tool has the --wckey= option that can set the WCKey for a
+ job.  [SBATCH|SALLOC|SLURM]_WCKEY can also be set in the environment
+ to set the WCKey.  If no WCKey is given the WCKey for the job will be
+ set to the users default WCKey for the cluster, which can be set up
+ with sacctmgr.  Also if no WCKey is specified the accounting record
+ is appended with a '*' to signify the WCKey was not specified.  This
+ is useful for a manager to determine if a user is specifying their
+ WCKey or not.
+</p>
+
+<h2>sacct</h2>
+<p>Sacct can be used to view the WCKey by adding "wckey" to the
+  --format option.  You can also single out jobs by using the
+  --wckeys= option which would only send information about jobs that
+  ran with specific WCKeys.
+</p>
+
+<h2>sacctmgr</h2>
+<p>Sacctmgr is used to manage WCKeys.  You can add and remove WCKeys
+  from users or list them.
+</p>
+<p>You add a user to a WCKey much like you do an account, only the
+  WCKey doesn't need to be created before hand. i.e.
+</p>
+<pre>
+sacctmgr add user da wckey=secret_project
+</pre>
+
+<p> You can remove them from a WCKey in the same fashion.
+</p>
+
+<pre>
+sacctmgr del user da wckey=secret_project
+</pre>
+
+<p> To alter the users default WCKey you can run a line like
+</p>
+<pre>
+sacctmgr mod user da cluster=snowflake set defaultwckey=secret_project
+</pre>
+
+<p>
+Which will change the default WCKey for user "da" on cluster
+"snowflake" to be "secret_project".  If you want this for all clusters
+just remove the cluster= option.
+</p>
+
+<h2>sreport</h2>
+<p>Information about reports available for WCKeys can be
+  found on the <a href="sreport.html">sreport manpage</a>.
+</p>
+<p style="text-align:center;">Last modified 14 November 2014</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

@@ -1,0 +1,692 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm sprio functionality.
+#
+#          sprio all options all arguments
+############################################################################
+# Copyright (C) 2009 Lawrence Livermore National Security.
+# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+# Written by Joseph Donaghy <donaghy1@llnl.gov>
+# CODE-OCEC-09-009. All rights reserved.
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set exit_code   0
+set file_in     "test$test_id.input"
+set timeout	60
+
+proc cleanup {} {
+	global bin_rm file_in
+
+	exec $bin_rm -f $file_in
+}
+
+#
+# Check accounting config and bail if not found.
+#
+if {[get_config_param "AccountingStorageType"] ne "accounting_storage/slurmdbd"} {
+	skip "This test can't be run without a usable AccountStorageType"
+}
+if {[get_config_param "PriorityType"] ne "priority/multifactor"} {
+	skip "This test can't be run without a usable PriorityType"
+}
+
+#
+# This test needs to be modified to use the core counts rather than CPU counts
+#
+set select_type_params [get_select_type_params ""]
+if { [string first "CR_ONE_TASK_PER_CORE" $select_type_params] != -1 } {
+	skip "This test can't be run SelectTypeParameters=CR_ONE_TASK_PER_CORE"
+}
+
+#
+# Build input script file
+#
+make_bash_script $file_in "$bin_sleep 600"
+
+################################################################
+#
+# Proc: sub_job
+#
+# Purpose:  Submit a job
+#
+# Returns: Job ID
+#
+################################################################
+
+proc sub_job { cpu_cnt } {
+	global exit_code file_in number sbatch test_id
+
+	set file_in	test${test_id}.input
+	set job_id	0
+	spawn $sbatch --output=/dev/null --error=/dev/null -n $cpu_cnt --exclusive $file_in
+	expect {
+		-re "Submitted batch job ($number)" {
+			set job_id $expect_out(1,string)
+			exp_continue
+		}
+		timeout {
+			fail "sbatch not responding"
+		}
+		eof {
+			wait
+		}
+	}
+
+	if {$job_id == 0} {
+		log_error "Did not get sbatch job_id"
+		set exit_code 1
+	}
+	return $job_id
+}
+
+################################################################
+#
+# Proc: sprio_opt
+#
+# Purpose:  Pass sprio options and test
+#
+# Returns: Number of matches.
+#
+# Input: Switch options not requiring arguments
+#
+################################################################
+
+proc sprio_opt { soption } {
+	global number eol sprio exit_code
+	set debug       0
+	set matches     0
+	set not_support 0
+	log_debug "$sprio $soption"
+
+############# sprio help option
+	if { $soption == "--help" } {
+
+		spawn $sprio $soption
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "noheader.*jobs.*long.*norm.*format.*user.*verbose.*version.*weights" {
+				if {$debug} {log_debug "Match1"}
+				incr matches
+				exp_continue
+			}
+			-re "Help options:" {
+				if {$debug} {log_debug "Match2"}
+				incr matches
+				exp_continue
+			}
+			-re "help *show this help message" {
+				if {$debug} {log_debug "Match3"}
+				incr matches
+				exp_continue
+			}
+			-re "usage *display a brief summary of sprio options" {
+				if {$debug} {log_debug "Match4"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+
+		if {$matches != 4} {
+			log_error "sprio $soption failed ($matches)"
+			set exit_code 1
+		}
+	return $matches
+	}
+
+############# sprio usage option
+	if { $soption == "--usage" } {
+
+		spawn $sprio $soption job sizes
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "Usage: sprio .-j jid.s.. .-u user_name.s.. .-o format. .-p partitions.$eol   .--federation. .--local. .--sibling. .--usage. .-hlnvVw." {
+				if {$debug} {log_debug "Match5"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+		if {$matches != 1} {
+			log_error "sprio -$soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+############# sprio version options
+	if { $soption == "--version" || $soption == "-V" } {
+
+		spawn $sprio $soption
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "slurm $number.$number.$number" {
+				if {$debug} {log_debug "Match6"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+
+		if {$matches != 1} {
+			log_error "sprio -$soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+############# sprio weights options
+	if { $soption == "--weights" || $soption == "-w" } {
+
+		spawn $sprio $soption
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "JOBID\\s+PARTITION\\s+PRIORITY" {
+				if {$debug} {log_debug "Match7"}
+				incr matches
+				exp_continue
+			}
+			-re "Weights" {
+				if {$debug} {log_debug "Match8"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+
+		if {$matches != 2} {
+			log_error "sprio -$soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+}
+
+################################################################
+#
+# Proc: sprio_args
+#
+# Purpose:  Pass sprio options, arguments and test
+#
+# Returns: Number of matches.
+#
+# Input: Switch options requiring arguments
+#
+################################################################
+
+proc sprio_args { soption sargs jobid} {
+	global number float sprio exit_code
+	set debug       0
+	set matches     0
+	set not_support 0
+	log_debug "$sprio $soption $sargs $jobid"
+
+############# sprio noheader options
+	if { $soption == "--noheader" || $soption == "-h" } {
+
+		spawn $sprio $soption $sargs $jobid
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "JOBID|PARTITION|PRIORITY|ADMIN|AGE|ASSOC|FAIRSHARE|JOBSIZE|PARTITION|QOS" {
+				if {$debug} {log_debug "Match9"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+		if {$matches != 0} {
+			log_error "sprio $soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+############# sprio jobs options
+	if { $soption == "--jobs" || $soption == "-j" } {
+
+		spawn $sprio $soption $jobid
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "JOBID\\s+PARTITION\\s+PRIORITY" {
+				if {$debug} {log_debug "Match10"}
+				incr matches
+				exp_continue
+			}
+			-re "$jobid\\s+\\S+\\s+$number" {
+				if {$debug} {log_debug "Match11"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+		if {$matches != 2} {
+			log_error "sprio $soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+############# sprio long options
+	if { $soption == "--long" || $soption == "-l" } {
+
+		spawn $sprio $soption $sargs $jobid
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "JOBID PARTITION     USER   PRIORITY       SITE        AGE      ASSOC  FAIRSHARE    JOBSIZE  PARTITION        QOS        NICE                 TRES" {
+				if {$debug} {log_debug "Match12"}
+				incr matches
+				exp_continue
+			}
+			-re "$jobid.*$number *$number *$number *$number *$number *$number *$number" {
+				if {$debug} {log_debug "Match13"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+		if {$matches != 2} {
+			log_error "sprio $soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+############# sprio norm options
+	if { $soption == "--norm" || $soption == "-n" } {
+
+		spawn $sprio $soption $sargs $jobid
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "JOBID\\s+PARTITION\\s+PRIORITY" {
+				if {$debug} {log_debug "Match14"}
+				incr matches
+				exp_continue
+			}
+			-re "$jobid\\s+\\S+\\s+$float" {
+				if {$debug} {log_debug "Match15"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+		if {$matches != 2} {
+			log_error "sprio $soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+############# sprio format options
+	if { $soption == "--format" || $soption == "-o" } {
+
+		spawn $sprio $soption "%.15i %.8u %.10y %.10Y %.10S %.10a %.10A %.10b %.10B %.10f %.10F %.10j %.10J %.10p %.10P %.10q %.10Q %.6N" $sargs $jobid
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "JOBID     USER   PRIORITY   PRIORITY       SITE        AGE        AGE      ASSOC      ASSOC " {
+				if {$debug} {log_debug "Match16"}
+				incr matches
+				exp_continue
+			}
+			-re "FAIRSHARE  FAIRSHARE    JOBSIZE    JOBSIZE  PARTITION  PARTITION        QOS        QOS   NICE" {
+				if {$debug} {log_debug "Match17"}
+				incr matches
+				exp_continue
+			}
+			-re "$jobid *.* *$float *$number *$float *$number *$float *$number *$float *$number *$float *$number *$float *$number *$number" {
+				if {$debug} {log_debug "Match18"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+		if {$matches != 3} {
+			log_error "sprio $soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+############# sprio u option
+	if { $soption == "-u" } {
+
+		spawn $sprio $soption $sargs
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "JOBID\\s+PARTITION\\s+USER" {
+				if {$debug} {log_debug "Match19"}
+				incr matches
+				exp_continue
+			}
+			-re "$jobid\\s+\\S+\\s+[string range $sargs 0 7]" {
+				if {$debug} {log_debug "Match20"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+		if {$matches != 2} {
+			log_error "sprio $soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+############# sprio usage option
+	if { $soption == "--user=" } {
+
+		spawn $sprio $soption$sargs
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "JOBID\\s+PARTITION\\s+USER" {
+				if {$debug} {log_debug "Match21"}
+				incr matches
+				exp_continue
+			}
+			-re "$jobid\\s+\\S+\\s+[string range $sargs 0 7]" {
+				if {$debug} {log_debug "Match22"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+		if {$matches != 2} {
+			log_error "sprio $soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+############# sprio verbose options
+	if { $soption == "--verbose" || $soption == "-v" } {
+
+		spawn $sprio $soption $sargs $jobid
+		expect {
+			-re "Slurm accounting storage is disabled" {
+				set not_support 1
+				exp_continue
+			}
+			-re "format.*job_flag.*jobs.*$jobid.*verbose" {
+				if {$debug} {log_debug "Match23"}
+				incr matches
+				exp_continue
+			}
+			-re "JOBID\\s+PARTITION\\s+PRIORITY" {
+				if {$debug} {log_debug "Match24"}
+				incr matches
+				exp_continue
+			}
+			-re "$jobid\\s+\\S+\\s+$number" {
+				if {$debug} {log_debug "Match25"}
+				incr matches
+				exp_continue
+			}
+			timeout {
+				fail "sprio not responding"
+			}
+			eof {
+				wait
+			}
+		}
+
+		if {$not_support == 1} {
+			skip "Can not test without accounting enabled"
+		}
+		if {$matches != 3} {
+			log_error "sprio $soption failed ($matches)"
+			set exit_code 1
+		}
+		return $matches
+	}
+
+}
+
+################################################################
+# Start a group of jobs
+
+set cpu_cnt [get_total_cpus]
+set jobid1 [sub_job $cpu_cnt]
+set jobid2 [sub_job $cpu_cnt]
+if {$exit_code != 0} {
+	cancel_job $jobid1
+	cancel_job $jobid2
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}
+log_debug "Submitted 2 jobs successfully"
+
+#
+# Collect uid
+#
+set user_name [get_my_user_name]
+
+#
+# Remove the sprio format variable if found
+#
+if {[info exists env(SPRIO_FORMAT)]} {
+    unset env(SPRIO_FORMAT)
+}
+
+#
+# Start testing sprio options and arguments
+#
+sprio_args -h -j $jobid2
+if {!$exit_code} {
+	sprio_args --noheader -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args -j -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args --jobs -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args -l -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args --long -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args -n -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args --norm -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args -o -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args --format -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args -u $user_name $jobid2
+}
+if {!$exit_code} {
+	sprio_args --user= $user_name $jobid2
+}
+if {!$exit_code} {
+	sprio_args -v -j $jobid2
+}
+if {!$exit_code} {
+	sprio_args -verbose -j $jobid2
+}
+if {!$exit_code} {
+	sprio_opt -V
+}
+if {!$exit_code} {
+	sprio_opt --version
+}
+if {!$exit_code} {
+	sprio_opt -w
+}
+if {!$exit_code} {
+	sprio_opt --weights
+}
+if {!$exit_code} {
+	sprio_opt --help
+}
+if {!$exit_code} {
+	sprio_opt --usage
+}
+
+#
+# Cancel jobs
+#
+cancel_job $jobid1
+cancel_job $jobid2
+
+#
+# Exit with code as appropriate
+#
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

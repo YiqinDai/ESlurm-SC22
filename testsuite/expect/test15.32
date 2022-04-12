@@ -1,0 +1,266 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Test of --deadline option and time limit partition
+############################################################################
+# Copyright (C) 2015 CEA/DAM/DIF
+# Written by Aline Roy <aline.roy@cea.fr>
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set file_in        "test$test_id.bash"
+set test_salloc    "test$test_id.test_salloc"
+set job_id         0
+set authorized     1
+set exit_code      0
+set part_name      "QA_TEST"
+
+proc cleanup {} {
+	global bin_rm test_salloc file_in
+
+	exec $bin_rm $test_salloc $file_in
+}
+
+if {![is_super_user]} {
+	skip "Can not test more unless SlurmUser or root"
+}
+
+#
+# Confirm the partition name does not already exist
+#
+set found -1
+spawn $scontrol -a show part $part_name
+expect {
+	-re "not found" {
+		log_debug "This error was expected, no worries"
+		set found 0
+		exp_continue
+	}
+	-re "PartitionName" {
+		set found 1
+		exp_continue
+	}
+	timeout {
+		fail "scontrol not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$found == -1} {
+	fail "scontrol output format error"
+}
+if {$found == 1} {
+	fail "Partition $part_name already exists"
+}
+
+#
+# Identify usable nodes in default partition
+#
+set def_node [lindex [get_nodes_by_state] 0]
+if {[string compare $def_node ""] == 0} {
+#	Wait for possible Epilog
+	sleep 10
+	set def_node [lindex [get_nodes_by_state] 0]
+}
+if {[string compare $def_node ""] == 0} {
+	fail "Default partition seems to have no nodes"
+}
+
+#
+# Create a new partition
+#
+spawn $scontrol create PartitionName=$part_name Nodes=$def_node MaxTime=30
+expect {
+	-re "error" {
+		log_error "Something bad happened on partition create"
+		set exit_code 1
+		exp_continue
+	}
+	timeout {
+		fail "scontrol not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+#
+# Confirm the partition now exists
+#
+set allow  0
+set found -1
+spawn $scontrol show part $part_name
+expect {
+	-re "not found" {
+		set found 0
+		exp_continue
+	}
+	-re "PartitionName" {
+		set found 1
+		exp_continue
+	}
+	timeout {
+		fail "scontrol not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$found != 1} {
+	fail "Partition not created"
+}
+
+set found 0
+
+# Check EnforcePartLimits value
+set enforcepartlimits [get_config_param "EnforcePartLimits"]
+log_debug "EnforcePartLimits=$enforcepartlimits"
+
+#
+# Run a job in this new partition and validate the time limit
+#
+make_bash_script $test_salloc "
+set -m
+$salloc --no-shell -N1 --deadline now+1hour -p $part_name -t100 $bin_sleep 1 &
+"
+
+make_bash_script $file_in "
+bash -i ./$test_salloc
+"
+
+set timeout $max_job_delay
+spawn bash -i $file_in
+if {[string compare $enforcepartlimits "NO"] == 0} {
+	expect {
+		-re "Pending job allocation ($number)" {
+			set job_id $expect_out(1,string)
+			set exit_code 0
+		}
+
+		timeout {
+			log_error "salloc not responding"
+			set exit_code 1
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+
+	#
+	# verify time limit. Add a temporization to wait for update reason
+	#
+	if {$job_id == 0} {
+		log_error "Job_id = 0 : salloc not OK "
+		set exit_code 1
+	} else {
+		set cycle_count 8
+		for {set inx 0} {$inx < $cycle_count} {incr inx} {
+			spawn $scontrol show job $job_id
+			expect {
+				-re "Reason=PartitionTimeLimit" {
+					set exit_code 0
+					break
+				}
+				-re "Reason=" {
+					set exit_code 1
+					sleep 5
+					exp_continue
+				}
+				timeout {
+					fail "scontrol not responding"
+				}
+				eof {
+					wait
+				}
+			}
+		}
+		if {$exit_code == 1} {
+			log_error "Partition time limit not used"
+			set exit_code 1
+		}
+		cancel_job $job_id
+	}
+} else {
+	#
+        # Job should be rejected at submit time
+        #
+        expect {
+                -re "Requested time limit is invalid (missing or exceeds some limit)" {
+                        set exit_code 0
+                        exp_continue
+                }
+                -re "unrecognized option '--deadline'" {
+                        set exit_code 1
+                        exp_continue
+                }
+                timeout {
+                        fail "salloc not responding"
+                }
+                eof {
+                        wait
+                }
+        }
+}
+
+#
+# Now delete the partition
+#
+spawn $scontrol delete PartitionName=$part_name
+expect {
+	timeout {
+		fail "scontrol not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+#
+# Confirm the partition is now gone
+#
+set found -1
+spawn $scontrol show part $part_name
+expect {
+	-re "not found" {
+		log_debug "This error was expected, no worries"
+		set found 0
+		exp_continue
+	}
+	-re "PartitionName" {
+		set found 1
+		exp_continue
+	}
+	timeout {
+		fail "scontrol not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$found != 0} {
+	fail "Partition not deleted"
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

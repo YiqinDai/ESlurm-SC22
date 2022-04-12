@@ -1,0 +1,204 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Validate that the SrunPortRange is enforced when starting
+#          a job with srun.
+############################################################################
+# Copyright (C) 2014 SchedMD LLC
+# Written by Nathan Yee <nyee32@schedmd.com>
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set chk_ports    [get_config_param "SrunPortRange"]
+set cwd          "[$bin_pwd]"
+set port_dir     "test$test_id\_port_conf"
+set config_path  ""
+set file_in      "test$test_id\_sc"
+set tmp_job      "test$test_id\_tmp_job"
+set job_id       0
+array set ports {}
+
+if {![is_super_user]} {
+    skip "This test can't be run without being a super user of the cluster"
+}
+if {$chk_ports eq "MISSING"} {
+	skip "This test requires SrunPortRange to be configured"
+}
+
+# split the port range into 2 numbers
+set range [split $chk_ports -]
+set i 0
+foreach p $range {
+	set ports($i) $p
+	incr i 1
+}
+
+if {[expr $ports(1) - $ports(0)] < 5} {
+	skip "This test requires SrunPortRange to be configured with at least 5 ports"
+}
+
+#
+# Copy the slurm.conf file
+#
+set config_path [get_conf_path]
+set config_file $config_path/slurm.conf
+save_conf $config_file
+
+proc cleanup {} {
+	global bin_rm file_in tmp_job job_id config_file
+
+	exec $bin_rm -f $file_in $tmp_job
+	cancel_job $job_id
+
+	# Clean up vestigial files and restore original slurm.conf file
+	restore_conf $config_file
+	reconfigure
+}
+
+### Check that SrunPortRange in scontrol show config and slurm.conf match ###
+log_info "---Checking SrunPortRange in slurm.conf and scontrol show conf---"
+
+set slurm_conf_range ""
+spawn  $bin_grep -i SrunPortRange $config_file
+expect {
+	-nocase -re "SrunPortRange=($re_word_str)" {
+		set slurm_conf_range $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "cat is not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+set show_config_range ""
+spawn -noecho $bin_bash -c "exec $scontrol show config | $bin_grep SrunPortRange"
+expect {
+	-re "SrunPortRange *=* ($re_word_str)" {
+		set show_config_range $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "scontrol is not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {[string compare $show_config_range $slurm_conf_range]} {
+	fail "SrunPortRange from scontrol show config does not match what is in slurm.conf"
+}
+
+set range [split $slurm_conf_range -]
+set i 0
+foreach p $range {
+	set ports($i) $p
+	incr i 1
+}
+
+# Check to see that srun is using the correct ports specified in slurm.conf #
+log_info "---Checking that srun uses correct ports---"
+
+make_bash_script $file_in "pid=\$(ps -ef|grep srun| egrep -v 'grep| gdb' | awk '{if (NR==1)print \$2}')
+echo \$pid
+lsof -p \$pid |grep TCP|grep LISTEN|
+awk '{split(\$9, a, \":\"); n=strtonum(a\[2\]);
+if (n < $ports(0) || n > $ports(1) ){print n, \"out of range\"}}'"
+
+set out_of_range 0
+spawn $srun -t1 $file_in
+expect {
+	-re "out of range" {
+		set out_of_range 1
+		exp_continue
+	}
+	-re "error" {
+		set out_of_range 1
+		exp_continue
+	}
+	timeout {
+		fail "srun is not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$out_of_range != 0} {
+	fail "srun has exceeded the allowed port range"
+}
+
+#
+# Change the slurm.conf port range to a smaller number so we can exhaust ports
+#
+exec $bin_sed -i "s/SrunPortRange=$slurm_conf_range/#SrunPortRange=$slurm_conf_range/Ig" $config_file
+exec $bin_echo SrunPortRange=$ports(0)-[expr $ports(0) + 5] > $config_path/$port_dir
+exec $bin_echo include $config_path/$port_dir >> $config_file
+reconfigure -fail
+
+###### Check that srun produces an error when all ports are exhausted ######
+log_info "---Checking srun error when ports are exhausted---"
+
+make_bash_script $tmp_job "$srun -t1 sleep 10"
+
+spawn $sbatch -N1 -o/dev/null -t1 $tmp_job
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "srun is not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$job_id == 0} {
+	fail "Job was not submitted"
+}
+
+if {[wait_for_job $job_id "RUNNING"] != 0} {
+	fail "Error waiting for job $job_id to start"
+}
+set match 0
+spawn $srun -t1 sleep 10
+expect {
+	-re "all ports in range" {
+		set match 1
+		log_debug "This error is expected, do not worry"
+		exp_continue
+	}
+	timeout {
+		fail "srun is not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+if {$match != 1} {
+	fail "srun should have failed due to exhausted ports but did not"
+}

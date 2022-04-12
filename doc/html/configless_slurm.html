@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - </title>
+	<link rel="canonical" href="https://slurm.schedmd.com/configless_slurm.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1>"Configless" Slurm</h1>
+
+<p>"Configless" Slurm is a feature that allows the compute nodes &mdash;
+specifically the slurmd process &mdash; and user commands running on login
+nodes to pull configuration information directly from the slurmctld instead of
+from a pre-distributed local file. Your cluster does require a central set of
+configuration files on the Slurm controllers &mdash; "configless" in Slurm's
+parlance means that the compute nodes, login nodes, and other cluster hosts
+do not need to be deployed with local copies of these files.</p>
+<p>The slurmd on startup will reach out to a slurmctld that you specify and the
+config files will be pulled to the node. This slurmctld can be identified by
+either an explicit option, or &mdash; preferably &mdash; through DNS SRV
+records defined within the cluster itself.</p>
+
+<p>If you have a login node you will be running client commands
+from, those client commands will have to use the DNS record to get the
+configuration information from the controller when they run.
+If you expect to have a lot of traffic from a login node, this
+can generate a lot of requests for the configuration files. In cases like
+this, you may want to consider running slurmd on the machine so it can
+manage the configuration files, but not allowing it to run jobs.</p>
+
+<h2><a name="INSTALLATION">Installation</a></h2>
+
+<p>There are no extra steps required to install this feature. It is built in
+by default starting with Slurm 20.02.</p>
+
+<h2><a name="SETUP">Setup</a></h2>
+
+<p>The slurmctld must first be configured to run in the configless mode.
+This is handled by setting <b>SlurmctldParameters=enable_configless</b> in
+slurm.conf and restarting slurmctld.</p>
+
+<p>Once enabled, you must configure the slurmd to get its configs from the
+slurmctld. This can be accomplished either by launching slurmd with the
+<b>--conf-server</b> option, or by setting a DNS SRV record and ensuring there
+is no local configuration file on the compute node.</p>
+
+<p>The <b>--conf-server</b> options takes precedence over the DNS record.</p>
+
+<p>The command line option takes "$host[:$port]", so an example would look like:
+<pre>
+slurmd --conf-server slurmctl-primary:6817
+</pre>
+Specifying the port is optional and will default to 6817 if it is not present.
+</p>
+
+<p>The same information can be provided in a DNS SRV record. For example:
+<pre>
+_slurmctld._tcp 3600 IN SRV 10 0 6817 slurmctl-backup
+_slurmctld._tcp 3600 IN SRV 0 0 6817 slurmctl-primary
+</pre>
+Will provide the required information to the slurmd on startup. As shown above,
+multiple SRV records can be specified if you have deployed Slurm in an HA
+setup. The DNS SRV entry with the lowest priority should be your primary
+slurmctld, with higher priority values for backup slurmctlds.
+</p>
+
+<h2><a name="INITIAL_TESTING">Initial Testing</a></h2>
+
+<p>With the slurmctld configured and slurmd started, you can check in a couple
+places to make sure the configs are present on the node. Config files will be
+in <b>SlurmdSpoolDir</b> under the <b>/conf-cache/</b>, and a symlink to this
+location will be created automatically in <b>/run/slurm/conf</b>. You can
+confirm that reloading is working by adding a comment to your slurm.conf on the
+slurmctld node and running
+<span class="commandline">scontrol reconfig</span> and checking that the config
+was updated.</p>
+
+<h2><a name="LIMITATIONS">Limitations</a></h2>
+
+<p>Using "%n" in "SlurmdSpoolDir" or "SlurmdPidFile" will not be properly
+substituted for the NodeName unless slurmd is also launched with the "-N"
+option.</p>
+
+<p>If you are using systemd to launch slurmd, you must ensure that
+"ConditionPathExists=*" is not present in the unit file or the slurmd will not
+start. (The example slurmd.service file shipped in Slurm 20.02 and above does
+not include this entry.)</p>
+
+<p>If any of the supported config files "Include" additional config files,
+the Included configs will <b>NOT</b> be shipped to the slurmds. Any additional
+config files will need to be shared a different way or added to the parent
+config.</p>
+
+<h2><a name="NOTES">Notes</a></h2>
+
+<p>The order of precedence for determining what configuration source to use
+is as follows:
+<ol>
+<li>The slurmd --conf-server $host[:$port] option</li>
+<li>The -f $config_file option</li>
+<li>The SLURM_CONF environment variable (if set)</li>
+<li>The default slurm config file (likely /etc/slurm.conf)</li>
+<li>Any DNS SRV records (from lowest priority value to highest)</li>
+</ol>
+</p>
+
+<p>Supported configuration files are:
+<ul>
+<li>slurm.conf</li>
+<li>acct_gather.conf</li>
+<li>cgroup.conf</li>
+<li>cgroup_allowed_devices_file.conf</li>
+<li>ext_sensors.conf</li>
+<li>gres.conf</li>
+<li>job_container.conf</li>
+<li>knl_cray.conf</li>
+<li>knl_generic.conf</li>
+<li>plugstack.conf</li>
+<li>topology.conf</li>
+</ul>
+</p>
+
+<p style="text-align:center;">Last modified 11 March 2021</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

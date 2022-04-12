@@ -1,0 +1,1085 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          Test allocating sub-sets of GRES to job steps
+############################################################################
+# Copyright (C) 2018 SchedMD LLC
+# Written by Morris Jette
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+############################################################################
+source ./globals
+
+set exit_code      0
+set file_in1       "test$test_id.input1"
+set file_in2       "test$test_id.input2"
+set file_out       "test$test_id.output"
+set number_commas  "\[0-9_,\]+"
+
+proc cleanup {} {
+	global bin_rm file_in1 file_in2 file_out
+
+	exec $bin_rm -f $file_in1 $file_in2 $file_out
+}
+
+if {![check_config_select "cons_tres"]} {
+	skip "This test is only compatible with select/cons_tres"
+}
+if {[get_config_param "FrontendName"] ne "MISSING"} {
+	skip "This test is incompatible with front-end systems"
+}
+
+set nb_nodes [get_partition_param [default_partition] "TotalNodes"]
+log_debug "Default partition node count is $nb_nodes"
+if {$nb_nodes > 1} {
+	set nb_nodes 2
+}
+set gpu_cnt [get_highest_gres_count $nb_nodes "gpu"]
+if {$gpu_cnt < 2} {
+	skip "This test requires 2 or more GPUs on $nb_nodes nodes of the default partition"
+}
+
+set constrain_devices [expr {[get_config_param "ConstrainDevices"] eq "yes"}]
+if {$constrain_devices} {
+	log_info "Devices files are constrained by cgroups"
+} else {
+	log_info "Devices files are NOT constrained by cgroups"
+}
+
+set node_name [get_nodes_by_request "--gres=gpu:1 -n1 -t1"]
+if { [llength $node_name] != 1 } {
+	skip "This test need to be able to submit jobs with at least --gres=gpu:1"
+}
+set cpus_per_node     [get_node_param $node_name "CPUTot"]
+set sockets_per_node  [get_node_param $node_name "Sockets"]
+set cpus_per_socket   [expr $cpus_per_node / $sockets_per_node]
+
+log_debug "GPUs per node is $gpu_cnt"
+log_debug "Sockets per node is $sockets_per_node"
+log_debug "CPUs per socket is $cpus_per_socket"
+log_debug "CPUs per node is $cpus_per_node"
+
+if {$cpus_per_node < 3} {
+	skip "This test requires 3 or more CPUs per node in the default partition"
+}
+
+#
+# Test --gpus-per-node option by job step
+#
+log_info "TEST 1: --gpus-per-node option"
+
+make_bash_script $file_in1 "
+	$scontrol -dd show job \${SLURM_JOBID}
+	$srun --exact -n1 --gpus-per-node=1 --exact -n1 --mem=0 ./$file_in2 &
+	$srun --exact -n1 --gpus-per-node=1 --exact -n1 --mem=0 ./$file_in2 &
+	$srun --exact -n1 --gpus-per-node=1 --exact -n1 --mem=0 ./$file_in2 &
+	wait
+	exit 0"
+
+make_bash_script $file_in2 "
+	echo 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES
+	sleep 3
+	if \[ \$SLURM_STEP_ID -eq 2 \]; then
+		$squeue -s --name=test$test_id
+	fi
+	exit 0"
+
+exec $bin_rm -f $file_out
+set job_id 0
+set timeout $max_job_delay
+spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=2 -N1 -n3 -t1 -o $file_out -J "test$test_id" ./$file_in1
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$job_id == 0} {
+	fail "Job not submitted"
+}
+
+if {[wait_for_job $job_id "DONE"] != 0} {
+	cancel_job $job_id
+	fail "Job $job_id did not complete"
+}
+
+if {[wait_for_file $file_out] != 0} {
+	fail "No output file"
+}
+set match 0
+spawn $bin_cat $file_out
+expect {
+	-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number)" {
+		incr match
+		exp_continue
+	}
+	eof {
+		wait
+	}
+}
+if {$match != 3} {
+	log_error "Bad CUDA information about job ($match != 3)"
+	set exit_code 1
+}
+
+log_user 0
+set match 0
+spawn $bin_grep "step creation temporarily disabled" $file_out
+expect {
+	-re "step creation temporarily disabled" {
+		incr match
+		exp_continue
+	}
+	eof {
+		wait
+	}
+}
+log_user 1
+if {$match != 1} {
+	log_error "Did not delay step for available GPU $match"
+	set exit_code 1
+}
+
+#
+# Test --gpus-per-task option by job step
+# Note that job is using --gpus-per-node, while step is using --gpus-per-task
+#
+log_info "TEST 2: --gpus-per-node for job and multiple simultaneous steps using --gpus-per-task option"
+
+make_bash_script $file_in1 "
+	$scontrol -dd show job \${SLURM_JOBID}
+	$srun --exact -n1 --gpus-per-task=1 --gpus-per-node=0 --mem=0 ./$file_in2 &
+	$srun --exact -n1 --gpus-per-task=1 --gpus-per-node=0 --mem=0 ./$file_in2 &
+	wait
+	exit 0"
+
+make_bash_script $file_in2 "
+	echo 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES
+	sleep 3
+	if \[ \$SLURM_STEP_ID -eq 1 \]; then
+		$scontrol show step \$SLURM_JOB_ID.\$SLURM_STEP_ID
+	fi
+	exit 0"
+
+exec $bin_rm -f $file_out
+set job_id 0
+set timeout $max_job_delay
+spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=2 -N1 -n2 -t1 -o $file_out -J "test$test_id" ./$file_in1
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$job_id == 0} {
+	fail "Job not submitted"
+}
+
+if {[wait_for_job $job_id "DONE"] != 0} {
+	cancel_job $job_id
+	fail "Job $job_id did not complete"
+}
+
+if {[wait_for_file $file_out] != 0} {
+	fail "No output file"
+}
+set bad_cuda_cnt 0
+set bad_cuda_val 0
+set last_cuda_val -1
+spawn $bin_cat $file_out
+expect {
+	-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number)," {
+		incr bad_cuda_cnt
+		exp_continue
+	}
+	-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number)" {
+		set val $expect_out(2,string)
+		if {$constrain_devices} {
+			if {$val != 0} {
+				log_error "Expected CUDA_VISIBLE_DEVICES:0 with cgroup-constrained devices"
+				set exit_code 1
+			}
+		} elseif {$last_cuda_val == -1} {
+			set last_cuda_val $val
+		} elseif {$last_cuda_val == $val} {
+			incr bad_cuda_val
+		}
+		exp_continue
+	}
+	-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:" {
+		incr bad_cuda_cnt
+		exp_continue
+	}
+	eof {
+		wait
+	}
+}
+if {$bad_cuda_cnt != 0} {
+	log_error "Bad CUDA count for $bad_cuda_cnt of 2 steps"
+	set exit_code 1
+} elseif {$bad_cuda_val != 0} {
+	log_error "Duplicate CUDA values for parallel steps 2 steps"
+	set exit_code 1
+}
+
+#
+# Test --gpus (per job or step) option by job step
+#
+log_info "TEST 3: --gpus-per-node for job and multiple simultaneous steps using --gpus (per step) option"
+
+make_bash_script $file_in1 "
+	$scontrol -dd show job \${SLURM_JOBID}
+	$srun --exact -n1 --gpus=1 --gpus-per-node=0 --mem=0 ./$file_in2 &
+	$srun --exact -n1 --gpus=1 --gpus-per-node=0 --mem=0 ./$file_in2 &
+	wait
+	exit 0"
+
+make_bash_script $file_in2 "
+	echo 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES
+	sleep 3
+	if \[ \$SLURM_STEP_ID -eq 1 \]; then
+		$scontrol show step \$SLURM_JOB_ID.\$SLURM_STEP_ID
+	fi
+	exit 0"
+
+exec $bin_rm -f $file_out
+set job_id 0
+set timeout $max_job_delay
+spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=2 -N1 -n2 -t1 -o $file_out -J "test$test_id" ./$file_in1
+expect {
+	-re "Submitted batch job ($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "sbatch not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$job_id == 0} {
+	fail "Job not submitted"
+}
+
+if {[wait_for_job $job_id "DONE"] != 0} {
+	cancel_job $job_id
+	fail "Job $job_id did not complete"
+}
+
+if {[wait_for_file $file_out] != 0} {
+	fail "No output file"
+}
+set bad_cuda_cnt 0
+set bad_cuda_val 0
+set last_cuda_val -1
+spawn $bin_cat $file_out
+expect {
+	-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number)," {
+		incr bad_cuda_cnt
+		exp_continue
+	}
+	-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number)" {
+		set val $expect_out(2,string)
+		if {$constrain_devices} {
+			if {$val != 0} {
+				log_error "Expected CUDA_VISIBLE_DEVICES:0 with cgroup-constrained devices"
+				set exit_code 1
+			}
+		} elseif {$last_cuda_val == -1} {
+			set last_cuda_val $val
+		} elseif {$last_cuda_val == $val} {
+			incr bad_cuda_val
+		}
+		exp_continue
+	}
+	-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:" {
+		incr bad_cuda_cnt
+		exp_continue
+	}
+	eof {
+		wait
+	}
+}
+if {$bad_cuda_cnt != 0} {
+	log_error "Bad CUDA count for $bad_cuda_cnt of 2 steps"
+	set exit_code 1
+} elseif {$bad_cuda_val != 0} {
+	log_error "Duplicate CUDA values for parallel steps 2 steps"
+	set exit_code 1
+}
+
+#
+# Test --gpus (per job or step) option by job step
+#
+if {$gpu_cnt > 2} {
+	log_info "TEST 4: --gpus-per-node for job and multiple simultaneous steps using --gpus (per step) option"
+
+	make_bash_script $file_in1 "
+		$scontrol -dd show job \${SLURM_JOBID}
+		$srun --exact -n1 --gpus=2 --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -n1 --gpus=1 --gpus-per-node=0 --mem=0 ./$file_in2 &
+		wait
+		exit 0"
+
+	make_bash_script $file_in2 "
+		echo 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES
+		sleep 3
+		if \[ \$SLURM_STEP_ID -eq 1 \]; then
+			$scontrol show step \$SLURM_JOB_ID.\$SLURM_STEP_ID
+		fi
+		exit 0"
+
+	exec $bin_rm -f $file_out
+	set job_id 0
+	set timeout $max_job_delay
+	spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=3 -N1 -n3 -t1 -o $file_out -J "test$test_id" ./$file_in1
+	expect {
+		-re "Submitted batch job ($number)" {
+			set job_id $expect_out(1,string)
+			exp_continue
+		}
+		timeout {
+			fail "sbatch not responding"
+		}
+		eof {
+			wait
+		}
+	}
+	if {$job_id == 0} {
+		fail "Job not submitted"
+	}
+
+	if {[wait_for_job $job_id "DONE"] != 0} {
+		cancel_job $job_id
+		fail "Job $job_id did not complete"
+	}
+
+	if {[wait_for_file $file_out] != 0} {
+		fail "No output file"
+	}
+	set bad_cuda_cnt 0
+	set bad_cuda_val 0
+	set last_cuda_val -1
+	spawn $bin_cat $file_out
+	expect {
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number)," {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number)" {
+			set val $expect_out(2,string)
+			set val2 $expect_out(3,string)
+			if {$constrain_devices} {
+				if {$val != 0 || $val2 != 1} {
+					log_error "Expected CUDA_VISIBLE_DEVICES:0,1 with cgroup-constrained devices"
+					set exit_code 1
+				}
+			} elseif {$last_cuda_val == -1} {
+				set last_cuda_val $val
+			} elseif {$last_cuda_val == $val} {
+				incr bad_cuda_val
+			}
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number)" {
+			set val $expect_out(2,string)
+			if {$constrain_devices} {
+				if {$val != 0} {
+					log_error "Expected CUDA_VISIBLE_DEVICES:0 with cgroup-constrained devices"
+					set exit_code 1
+				}
+			} elseif {$last_cuda_val == -1} {
+				set last_cuda_val $val
+			} elseif {$last_cuda_val == $val} {
+				incr bad_cuda_val
+			}
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:" {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	if {$bad_cuda_cnt != 0} {
+		log_error "Bad CUDA count for $bad_cuda_cnt of 2 steps"
+		set exit_code 1
+	} elseif {$bad_cuda_val != 0} {
+		log_error "Duplicate CUDA values for parallel steps 2 steps"
+		set exit_code 1
+	}
+}
+
+#
+# Test --gpus-per-task option by job step
+#
+if {$gpu_cnt > 2} {
+	log_info "TEST 5: --gpus-per-node for job and multiple simultaneous steps using --gpus-per-task option"
+
+	set job_gpus 3
+	set step_gpus 2
+
+	make_bash_script $file_in1 "
+		$scontrol -dd show job \${SLURM_JOBID}
+		$srun --exact -n1 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -n1 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -n1 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		wait
+		exit 0"
+
+	make_bash_script $file_in2 "
+		echo 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES
+		sleep 3
+		if \[ \$SLURM_STEP_ID -eq 2 \]; then
+			$scontrol show step \$SLURM_JOB_ID.\$SLURM_STEP_ID
+		fi
+		exit 0"
+
+	exec $bin_rm -f $file_out
+	set job_id 0
+	set timeout $max_job_delay
+	spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=$job_gpus -N1 -n3 -t1 -o $file_out -J "test$test_id" ./$file_in1
+	expect {
+		-re "Submitted batch job ($number)" {
+			set job_id $expect_out(1,string)
+			exp_continue
+		}
+		timeout {
+			fail "sbatch not responding"
+		}
+		eof {
+			wait
+		}
+	}
+	if {$job_id == 0} {
+		fail "Job not submitted"
+	}
+
+	if {[wait_for_job $job_id "DONE"] != 0} {
+		cancel_job $job_id
+		fail "Job $job_id did not complete"
+	}
+
+	if {[wait_for_file $file_out] != 0} {
+		fail "No output file"
+	}
+	set match 0
+	set bad_cuda_cnt 0
+	spawn $bin_cat $file_out
+	expect {
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number),($number)," {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number),($number)" {
+			if {$step_gpus == 3} {
+				incr match
+			} else {
+				incr bad_cuda_cnt
+			}
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number)" {
+			if {$step_gpus == 2} {
+				incr match
+			} else {
+				incr bad_cuda_cnt
+			}
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:" {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	if {$bad_cuda_cnt != 0} {
+		log_error "Bad CUDA count for $bad_cuda_cnt of 3 steps"
+		set exit_code 1
+	} elseif {$match != 3} {
+		log_error "Bad CUDA information for $match of 3 steps"
+		set exit_code 1
+	}
+
+	log_user 0
+	set match 0
+	spawn $bin_grep "step creation temporarily disabled" $file_out
+	expect {
+		-re "step creation temporarily disabled" {
+			incr match
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	if {$match != 2} {
+		log_error "Did not delay steps for available GPU"
+		set exit_code 1
+	}
+}
+
+#
+# Test --gpus option by job step
+#
+if {$gpu_cnt >= 2 && $nb_nodes >= 2 && $cpus_per_node >= 3} {
+	log_info "TEST 6: --gpus-per-node for job and multiple simultaneous steps using --gpus option"
+
+	set job_gpus 2
+	set step_gpus 2
+
+	make_bash_script $file_in1 "
+		$scontrol -dd show job \${SLURM_JOBID}
+		$srun --exact -n2 --gpus=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -n2 --gpus=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -n2 --gpus=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		wait
+		exit 0"
+
+	make_bash_script $file_in2 "
+		echo 'HOST:'\$SLURMD_NODENAME 'NODE_ID:'\$SLURM_NODEID 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES
+		sleep 3
+		if \[ \$SLURM_STEP_ID -eq 2 -a \$SLURM_NODEID -eq 0 \]; then
+			$scontrol show step \$SLURM_JOB_ID.\$SLURM_STEP_ID
+		fi
+		exit 0"
+
+	exec $bin_rm -f $file_out
+	set job_id 0
+	set timeout $max_job_delay
+	spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=$job_gpus -N2 -n6 -t1 -o $file_out -J "test$test_id" ./$file_in1
+	expect {
+		-re "Submitted batch job ($number)" {
+			set job_id $expect_out(1,string)
+			exp_continue
+		}
+		timeout {
+			fail "sbatch not responding"
+		}
+		eof {
+			wait
+		}
+	}
+	if {$job_id == 0} {
+		fail "Job not submitted"
+	}
+
+	if {[wait_for_job $job_id "DONE"] != 0} {
+		cancel_job $job_id
+		fail "Job $job_id did not complete"
+	}
+
+	if {[wait_for_file $file_out] != 0} {
+		fail "No output file"
+	}
+	set match 0
+	set bad_cuda_cnt 0
+	array set cuda_val {}
+	spawn $bin_cat $file_out
+	expect {
+		-re "NODE_ID:($number) STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number)," {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		-re "NODE_ID:($number) STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number)" {
+			incr match
+			if {$expect_out(1,string) == 0} {
+				set cuda_val($expect_out(2,string)) $expect_out(3,string)
+			}
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:" {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	if {$bad_cuda_cnt != 0} {
+		log_error "Bad CUDA count for $bad_cuda_cnt of 6 tasks"
+		set exit_code 1
+	} elseif {$match != 6} {
+		log_error "Bad CUDA information for $match of 6 tasks"
+		set exit_code 1
+	}
+	if {$exit_code == 0} {
+		if {$constrain_devices} {
+			if {$cuda_val(0) != 0 || $cuda_val(1) != 0 || $cuda_val(2) != 0} {
+				log_error "Expected all steps with NODE_ID=0 to have CUDA_VISIBLE_DEVICES:0 with cgroup-constrained devices"
+				set exit_code 1
+			}
+		} elseif {$cuda_val(0) == $cuda_val(1) && $cuda_val(1) == $cuda_val(2)} {
+			log_error "Duplicated CUDA values for all 3 steps on node 0 of allocation"
+			set exit_code 1
+		}
+		if {$cuda_val(0) != $cuda_val(1) && $cuda_val(1) != $cuda_val(2) && $cuda_val(2) != $cuda_val(0)} {
+			log_error "Unique CUDA values for all 3 steps on node 0 of allocation"
+			set exit_code 1
+		}
+	}
+
+	log_user 0
+	set match 0
+	spawn $bin_grep "step creation temporarily disabled" $file_out
+	expect {
+		-re "step creation temporarily disabled" {
+			incr match
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	if {$match != 1} {
+		log_error "Did not delay steps for available GPU"
+		set exit_code 1
+	}
+}
+
+#
+# Test --gpus option by job step
+#
+if {$gpu_cnt >= 4 && $nb_nodes >= 2 && $cpus_per_node >= 3} {
+	log_info "TEST 7: --gpus-per-node for job and multiple simultaneous steps using --gpus option"
+
+	set job_gpus 4
+
+	make_bash_script $file_in1 "
+		$scontrol -dd show job \${SLURM_JOBID}
+		$srun --exact -n2 --gpus=6 --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -n2 --gpus=7 --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -n2 --gpus=8 --gpus-per-node=0 --mem=0 ./$file_in2 &
+		wait
+		exit 0"
+
+	make_bash_script $file_in2 "
+		echo 'HOST:'\$SLURMD_NODENAME 'NODE_ID:'\$SLURM_NODEID 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES
+		sleep 3
+		if \[ \$SLURM_STEP_ID -eq 2 -a \$SLURM_NODEID -eq 0 \]; then
+			$scontrol show step \$SLURM_JOB_ID.\$SLURM_STEP_ID
+		fi
+		exit 0"
+
+	exec $bin_rm -f $file_out
+	set job_id 0
+	set timeout $max_job_delay
+	spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=$job_gpus -N2 -n6 -t1 -o $file_out -J "test$test_id" ./$file_in1
+	expect {
+		-re "Submitted batch job ($number)" {
+			set job_id $expect_out(1,string)
+			exp_continue
+		}
+		timeout {
+			fail "sbatch not responding"
+		}
+		eof {
+			wait
+		}
+	}
+	if {$job_id == 0} {
+		fail "Job not submitted"
+	}
+
+	if {[wait_for_job $job_id "DONE"] != 0} {
+		cancel_job $job_id
+		fail "Job $job_id did not complete"
+	}
+
+	if {[wait_for_file $file_out] != 0} {
+		fail "No output file"
+	}
+
+	set match 0
+	set bad_cuda_cnt 0
+	spawn $bin_cat $file_out
+	expect {
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number),($number),($number)," {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	if {$bad_cuda_cnt != 0} {
+		log_error "Bad CUDA count for $bad_cuda_cnt of 3 tasks"
+		set exit_code 1
+	}
+
+	log_user 0
+	set match 0
+	spawn $bin_grep "step creation temporarily disabled" $file_out
+	expect {
+		-re "step creation temporarily disabled" {
+			incr match
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	if {$match != 2} {
+		log_error "Did not delay steps for available GPU ($match != 2)"
+		set exit_code 1
+	}
+}
+
+#
+# Test --gpus-per-task option by job step
+#
+if {$gpu_cnt > 3 && $nb_nodes >= 2} {
+	log_info "TEST 8: --gpus-per-node for job and multiple simultaneous steps using --gpus-per-task option"
+
+	set job_gpus 4
+	set step_gpus 2
+
+	make_bash_script $file_in1 "
+		$scontrol -dd show job \${SLURM_JOBID}
+		$srun --exact -n3 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -n3 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		wait
+		exit 0"
+
+	make_bash_script $file_in2 "
+		echo 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES ' '
+		sleep 3
+		if \[ \$SLURM_STEP_ID -eq 1 -a \$SLURM_PROCID -eq 0 \]; then
+			$scontrol show step \$SLURM_JOB_ID.\$SLURM_STEP_ID
+		fi
+		exit 0"
+
+	exec $bin_rm -f $file_out
+	set job_id 0
+	set timeout $max_job_delay
+	spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=$job_gpus -N2 -n4 -t1 -o $file_out -J "test$test_id" ./$file_in1
+	expect {
+		-re "Submitted batch job ($number)" {
+			set job_id $expect_out(1,string)
+			exp_continue
+		}
+		timeout {
+			fail "sbatch not responding"
+		}
+		eof {
+			wait
+		}
+	}
+	if {$job_id == 0} {
+		fail "Job not submitted"
+	}
+
+	if {[wait_for_job $job_id "DONE"] != 0} {
+		cancel_job $job_id
+		fail "Job $job_id did not complete"
+	}
+
+	if {[wait_for_file $file_out] != 0} {
+		fail "No output file"
+	}
+	set match2 0
+	set match4 0
+	set bad_cuda_cnt 0
+	spawn $bin_cat $file_out
+	expect {
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number),($number),($number)," {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number),($number),($number) " {
+			incr match4
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number),($number)," {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES: " {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 0
+	spawn $bin_cat $file_out
+	expect {
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number) " {
+			incr match2
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	if {$bad_cuda_cnt != 0} {
+		log_error "Bad CUDA count for $bad_cuda_cnt of 2 steps"
+		set exit_code 1
+	} elseif {$match2 != 2} {
+		log_error "Bad CUDA information for $match2 of 2 tasks"
+		set exit_code 1
+	} elseif {$match4 != 4} {
+		log_error "Bad CUDA information for $match4 of 4 tasks"
+		set exit_code 1
+	}
+
+	log_user 0
+	set match 0
+	spawn $bin_grep "step creation temporarily disabled" $file_out
+	expect {
+		-re "step creation temporarily disabled" {
+			incr match
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	if {$match != 1} {
+		log_error "Did not delay steps for available GPU"
+		set exit_code 1
+	}
+}
+
+#
+# Test --gpus-per-task option by job step
+#
+if {$gpu_cnt > 3 && $nb_nodes >= 2} {
+	log_info "TEST 9: --gpus-per-node for job and multiple simultaneous steps using --gpus-per-task option"
+
+	set job_gpus 4
+	set step_gpus 2
+
+	make_bash_script $file_in1 "
+		$scontrol -dd show job \${SLURM_JOBID}
+		$srun --exact -N1 -n1 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -N1 -n1 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -N1 -n1 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -N1 -n1 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -N1 -n1 --gpus-per-task=$step_gpus --gpus-per-node=0 --mem=0 ./$file_in2 &
+		wait
+		exit 0"
+
+	make_bash_script $file_in2 "
+		echo 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES ' '
+		sleep 3
+		if \[ \$SLURM_STEP_ID -eq 1 -a \$SLURM_PROCID -eq 0 \]; then
+			$scontrol show step \$SLURM_JOB_ID.\$SLURM_STEP_ID
+		fi
+		exit 0"
+
+	exec $bin_rm -f $file_out
+	set job_id 0
+	set timeout $max_job_delay
+	spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=$job_gpus -N2 -n5 -t1 -o $file_out -J "test$test_id" ./$file_in1
+	expect {
+		-re "Submitted batch job ($number)" {
+			set job_id $expect_out(1,string)
+			exp_continue
+		}
+		timeout {
+			fail "sbatch not responding"
+		}
+		eof {
+			wait
+		}
+	}
+	if {$job_id == 0} {
+		fail "Job not submitted"
+	}
+
+	if {[wait_for_job $job_id "DONE"] != 0} {
+		cancel_job $job_id
+		fail "Job $job_id did not complete"
+	}
+
+	if {[wait_for_file $file_out] != 0} {
+		fail "No output file"
+	}
+	set match2 0
+	set bad_cuda_cnt 0
+	spawn $bin_cat $file_out
+	expect {
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number)," {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number) " {
+			incr match2
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES: " {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	if {$bad_cuda_cnt != 0} {
+		log_error "Bad CUDA count for $bad_cuda_cnt of 2 steps"
+		set exit_code 1
+	} elseif {$match2 != 5} {
+		log_error "Bad CUDA information for $match2 of 5 tasks"
+		set exit_code 1
+	}
+
+	log_user 0
+	set match 0
+	spawn $bin_grep "step creation temporarily disabled" $file_out
+	expect {
+		-re "step creation temporarily disabled" {
+			incr match
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	if {$match != 1} {
+		log_error "Did not delay steps for available GPU"
+		set exit_code 1
+	}
+}
+
+#
+# Test --gpus-per-task option by job step
+#
+if {$gpu_cnt > 3 && $nb_nodes >= 2} {
+	log_info "TEST 10: --gpus-per-node for job and multiple simultaneous steps using --gpus-per-task option"
+
+	set job_gpus 3
+	set step_gpus 2
+
+	make_bash_script $file_in1 "
+		$scontrol -dd show job \${SLURM_JOBID}
+		$srun --exact -N2 -n4 --ntasks-per-node=2 --gpus-per-task=1 --gpus-per-node=0 --mem=0 ./$file_in2 &
+		$srun --exact -N2 -n4 --ntasks-per-node=2 --gpus-per-task=1 --gpus-per-node=0 --mem=0 ./$file_in2 &
+		wait
+		exit 0"
+
+	make_bash_script $file_in2 "
+		echo 'STEP_ID:'\$SLURM_STEP_ID 'CUDA_VISIBLE_DEVICES:'\$CUDA_VISIBLE_DEVICES ' '
+		sleep 3
+		if \[ \$SLURM_STEP_ID -eq 1 -a \$SLURM_PROCID -eq 0 \]; then
+			$scontrol show step \$SLURM_JOB_ID.\$SLURM_STEP_ID
+		fi
+		exit 0"
+
+	exec $bin_rm -f $file_out
+	set job_id 0
+	set timeout $max_job_delay
+	spawn $sbatch --gres=craynetwork:0 --cpus-per-gpu=1 --gpus-per-node=$job_gpus -N2 -n5 -t1 -o $file_out -J "test$test_id" ./$file_in1
+	expect {
+		-re "Submitted batch job ($number)" {
+			set job_id $expect_out(1,string)
+			exp_continue
+		}
+		timeout {
+			fail "sbatch not responding"
+		}
+		eof {
+			wait
+		}
+	}
+	if {$job_id == 0} {
+		fail "Job not submitted"
+	}
+
+	if {[wait_for_job $job_id "DONE"] != 0} {
+		cancel_job $job_id
+		fail "Job $job_id did not complete"
+	}
+
+	if {[wait_for_file $file_out] != 0} {
+		fail "No output file"
+	}
+	set match2 0
+	set bad_cuda_cnt 0
+	spawn $bin_cat $file_out
+	expect {
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number)," {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES:($number),($number) " {
+			incr match2
+			exp_continue
+		}
+		-re "STEP_ID:($number) CUDA_VISIBLE_DEVICES: " {
+			incr bad_cuda_cnt
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	if {$bad_cuda_cnt != 0} {
+		log_error "Bad CUDA count for $bad_cuda_cnt of 2 steps"
+		set exit_code 1
+	} elseif {$match2 != 8} {
+		log_error "Bad CUDA information for $match2 of 8 tasks"
+		set exit_code 1
+	}
+
+	log_user 0
+	set match 0
+	spawn $bin_grep "step creation temporarily disabled" $file_out
+	expect {
+		-re "step creation temporarily disabled" {
+			incr match
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	if {$match != 1} {
+		fail "Did not delay steps for available GPU"
+	}
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

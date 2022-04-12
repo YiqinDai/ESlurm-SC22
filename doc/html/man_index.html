@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Man Pages</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/man_index.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1>Man Pages</h1>
+
+<p><b>NOTE: This documentation is for Slurm version 20.11.<br>
+Documentation for other versions of Slurm is distributed with the code</b></p>
+
+<h2>Commands</h2>
+<table border="1">
+<tr><td><a href="sacct.html">sacct</a></td><td>displays accounting data for all jobs and job steps in the Slurm job accounting log or Slurm database</td></tr>
+<tr><td><a href="sacctmgr.html">sacctmgr</a></td><td>Used to view and modify Slurm account information.</td></tr>
+<tr><td><a href="salloc.html">salloc</a></td><td>Obtain a Slurm job allocation (a set of nodes), execute a command, and then release the allocation when the command is finished.</td></tr>
+<tr><td><a href="sattach.html">sattach</a></td><td>Attach to a Slurm job step.</td></tr>
+<tr><td><a href="sbatch.html">sbatch</a></td><td>Submit a batch script to Slurm.</td></tr>
+<tr><td><a href="sbcast.html">sbcast</a></td><td>transmit a file to the nodes allocated to a Slurm job.</td></tr>
+<tr><td><a href="scancel.html">scancel</a></td><td>Used to signal jobs or job steps that are under the control of Slurm.</td></tr>
+<tr><td><a href="scontrol.html">scontrol</a></td><td>Used view and modify Slurm configuration and state.</td></tr>
+<tr><td><a href="sdiag.html">sdiag</a></td><td>scheduling diagnostic tool.</td></tr>
+<tr><td><a href="sinfo.html">sinfo</a></td><td>view information about Slurm nodes and partitions.</td></tr>
+<tr><td><a href="slurm.html">slurm</a></td><td>Slurm system overview.</td></tr>
+<tr><td><a href="sprio.html">sprio</a></td><td>view the factors that comprise a job's scheduling priority</td></tr>
+<tr><td><a href="sh5util.html">sh5util</a></td><td>merge utility for acct_gather_profile plugin.</td></tr>
+<tr><td><a href="squeue.html">squeue</a></td><td>view information about jobs located in the Slurm scheduling queue.</td></tr>
+<tr><td><a href="sreport.html">sreport</a></td><td>Generate reports from the slurm accounting data.</td></tr>
+<tr><td><a href="srun.html">srun</a></td><td>Run parallel jobs</td></tr>
+<tr><td><a href="sshare.html">sshare</a></td><td>Tool for listing the shares of associations to a cluster.</td></tr>
+<tr><td><a href="sstat.html">sstat</a></td><td>Display various status information of a running job/step.</td></tr>
+<tr><td><a href="strigger.html">strigger</a></td><td>Used set, get or clear Slurm trigger information.</td></tr>
+<tr><td><a href="sview.html">sview</a></td><td>graphical user interface to view and modif. Slurm state.</td></tr>
+</table>
+
+<h2>Configuration Files</h2>
+<table border="1">
+<tr><td><a href="acct_gather.conf.html">acct_gather.conf</a></td><td>Slurm configuration file for the acct_gather plugins</td></tr>
+<tr><td><a href="burst_buffer.conf.html">burst_buffer.conf</a></td><td>Slurm burst buffer configuration</td></tr>
+<tr><td><a href="cgroup.conf.html">cgroup.conf</a></td><td>Slurm configuration file for the cgroup support</td></tr>
+<tr><td><a href="ext_sensors.conf.html">ext_sensors.conf</a></td><td>Slurm configuration file for the external sensor support</td></tr>
+<tr><td><a href="gres.conf.html">gres.conf</a></td><td>Slurm configuration file for generic resource management.</td></tr>
+<tr><td><a href="job_container.conf.html">job_container.conf</a></td><td>Slurm configuration file for configuring the tmpfs job container plugin</td></tr>
+<tr><td><a href="knl.conf.html">knl.conf</a></td><td>Slurm configuration file for Intel Knights Landing management.</td></tr>
+<tr><td><a href="nonstop.conf.html">nonstop.conf</a></td><td>Slurm configuration file for failure management.</td></tr>
+<tr><td><a href="slurm.conf.html">slurm.conf</a></td><td>Slurm configuration file</td></tr>
+<tr><td><a href="slurmdbd.conf.html">slurmdbd.conf</a></td><td>Slurm Database Daemon (SlurmDBD) configuration file</td></tr>
+<tr><td><a href="topology.conf.html">topology.conf</a></td><td>Slurm configuration file for defining the network topology</td></tr>
+</table>
+
+<h2>Daemons and Other</h2>
+<table border="1">
+<tr><td><a href="slurmctld.html">slurmctld</a></td><td>The central management daemon of Slurm.</td></tr>
+<tr><td><a href="slurmd.html">slurmd</a></td><td>The compute node daemon for Slurm.</td></tr>
+<tr><td><a href="slurmdbd.html">slurmdbd</a></td><td>Slurm Database Daemon.</td></tr>
+<tr><td><a href="slurmrestd.html">slurmrestd</a></td><td>The Slurm REST API daemon.</td></tr>
+<tr><td><a href="slurmstepd.html">slurmstepd</a></td><td>The job step manager for Slurm.</td></tr>
+<tr><td><a href="spank.html">SPANK</a></td><td>Slurm Plug-in Architecture for Node and job (K)control</td></tr>
+</table>
+
+<p style="text-align:center;">Last modified 3 March 2021</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

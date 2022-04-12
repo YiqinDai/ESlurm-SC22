@@ -1,0 +1,111 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          bsub wrapper test
+############################################################################
+# Copyright (C) 2016 SchedMD LLC
+# Written by Alejandro Sanchez <alex@schedmd.com>
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+
+source ./globals
+
+set exit_code   0
+set file_err	"test$test_id.error"
+set file_in	"test$test_id.input"
+set file_out	"test$test_id.output"
+
+proc cleanup {} {
+	global bin_rm file_in file_out file_err
+
+	exec $bin_rm -f $file_in $file_out $file_err
+}
+
+if {[file executable $bsub] == 0} {
+	skip "$bsub not found"
+}
+
+if {[file executable $bkill] == 0} {
+	skip "$bkill not found"
+}
+
+set job_id 0
+exec rm -f $file_out $file_err
+make_bash_script $file_in "$bin_echo HELLO; $bin_cat /dummy_file"
+spawn $bsub -W 01:00 -e $file_err -o $file_out ./$file_in
+expect {
+	-re "($number)" {
+		set job_id $expect_out(1,string)
+		exp_continue
+	}
+	timeout {
+		fail "bsub not responding"
+	}
+	eof {
+		wait
+	}
+}
+if {$job_id == 0} {
+	fail "bsub failed to submit job"
+}
+
+if {[wait_for_file $file_out] != 0} {
+	catch {exec $bkill $job_id}
+	fail "bsub output file not found"
+}
+set matches 0
+spawn $bin_cat $file_out
+expect {
+	-re "HELLO" {
+		incr matches
+		exp_continue
+	}
+	eof {
+		wait
+	}
+}
+if {$matches != 1} {
+	log_error "Unexpected bsub output file contents"
+	set exit_code 1
+}
+
+if {[wait_for_file $file_err] != 0} {
+	catch {exec $qdel $job_id}
+	fail "bsub error file not found"
+}
+set matches 0
+spawn $bin_cat $file_err
+expect {
+	-re "No such file" {
+		log_debug "Message from cat expected, no worries"
+		incr matches
+		exp_continue
+	}
+	eof {
+		wait
+	}
+}
+if {$matches != 1} {
+	fail "Unexpected bsub error file contents"
+}
+
+if {$exit_code != 0} {
+	fail "Test failed due to previous errors (\$exit_code = $exit_code)"
+}

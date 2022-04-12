@@ -1,0 +1,520 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test for accounting records of specific job names with their ID
+############################################################################
+# Copyright (C) 2015 SchedMD LLC.
+# Written by Nathan Yee <nyee32@schedmd.com>
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+
+proc test_info { test_type func_type } {
+
+	return "(Within: inc21.21_test function: $func_type Testing: $test_type)"
+}
+
+#
+# Supplemental function to test21.21 that test a job with
+# resources within the allowed limit in the association
+#
+proc inc21_21_good { test_type limit } {
+
+	global number bin_id ta srun test_node selectparam nthreads is_skip re_word_str
+	set job_id 0
+	set val 0
+	set add ""
+
+	# Wait for old jobs to clean up
+	sleep 2
+
+	log_info "====== Test $test_type within: inc21.21_tests function: inc21_21_good) ======"
+
+	if { ([string compare $test_type "maxcpus"] == 0 ||
+	     [string compare $test_type "maxcpumins"] == 0) &&
+             [default_part_exclusive] != 0} {
+		log_warn "Unable to perform test with exclusive node allocations"
+		set is_skip 1
+		return
+	}
+	set select_type_param [get_select_type_params]
+	if { [string first "CR_SOCKET" $select_type_param] != -1} {
+		log_warn "This test can't be run SelectTypeParameters=CR_SOCKET"
+		set is_skip 1
+		return
+	}
+	if { [string compare $test_type "maxnode"] == 0 } {
+		set add "--exclusive"
+	} else {
+		set add "-w$test_node"
+	}
+
+	set matches 0
+	spawn $srun -v -t1 $add [lindex $limit 0][lindex $limit 1] \
+	    --account=$ta $bin_id
+	expect {
+		-re "launching StepId=($number)\\.$re_word_str" {
+			set job_id $expect_out(1,string)
+			incr matches
+			exp_continue
+		}
+		timeout {
+			fail "srun not responding [test_info $test_type \"inc21_21_good\"]"
+		}
+		eof {
+			wait
+		}
+	}
+
+	if {$job_id != 0 && [wait_for_job $job_id "DONE"] != 0} {
+		fail "Job $job_id did not complete [test_info $test_type \"inc21_21_good\"]"
+	}
+
+	subtest -fail { $matches == 1 } "Job launches with correct limit"
+}
+
+#
+# Supplemental function to test21.21 that test a job with
+# resources larger than allowed limit in the association
+#
+proc inc21_21_bad { test_type limit } {
+
+	global number bin_id ta srun test_node nthreads selectparam re_word_str
+	set job_id 0
+	set over_lim [expr [lindex $limit 1] + 1]
+	set add ""
+
+	log_info "====== Test $test_type within: inc21.21_tests function: inc21_21_bad) ======"
+
+	if { [string compare $test_type "maxnode"] == 0 } {
+		set add "--exclusive"
+	} else {
+		set add "-w$test_node"
+	}
+
+	set matches 0
+	spawn $srun -v $add -t1 [lindex $limit 0]$over_lim --account=$ta \
+	    -I $bin_id
+	expect {
+		-re "Job violates accounting/QOS policy" {
+			log_info "This error is expected, not a problem [test_info $test_type \"inc21_21_bad\"]"
+			exp_continue
+		}
+		-re "launching StepId=($number)\\.$re_word_str" {
+			set job_id $expect_out(1,string)
+			fail "Job ($job_id) should not have run [test_info $test_type \"inc21_21_bad\"]"
+		}
+		timeout {
+			fail "srun not responding [test_info $test_type \"inc21_21_bad\"]"
+		}
+		eof {
+			wait
+		}
+	}
+
+	if {$job_id != 0 && [wait_for_job $job_id "DONE"] != 0} {
+		fail "Job $job_id did not complete [test_info $test_type \"inc21_21_bad\"]"
+	}
+}
+
+proc inc21_21_grp_test { test_type limit } {
+
+	global number bin_id ta srun sbatch test_node selectparam nthreads is_skip
+	global file_in squeue scancel bin_bash bin_chmod
+	set job_id 0
+	set val 0
+	set exclusive ""
+
+	log_info "===== Test $test_type within: inc21.21_tests function: inc21_21_grp_test) ====="
+
+	if  { ![string compare $test_type "grpcpumins"] &&
+	      ![param_contains [get_config_param "AccountingStorageEnforce"] "safe"] } {
+		log_warn "This test can't be run without AccountingStorageEnforce having \"safe\" in it"
+		set is_skip 1
+		return
+	}
+
+	if { [default_part_exclusive] != 0} {
+		log_warn "This test can't be run Exclusive node allocations"
+		set is_skip 1
+		return
+	}
+
+	set select_type_param [get_select_type_params]
+	if { [string first "CR_SOCKET" $select_type_param] != -1} {
+		log_warn "This test can't be run SelectTypeParameters=CR_SOCKET"
+		set is_skip 1
+		return
+	}
+
+	# Check and see if it is a CPU test
+	if { [string compare $test_type "grpcpus"] == 0 ||
+	     [string compare $test_type "grpcpumins"] == 0 ||
+	     [string compare $test_type "grpcpurunmins"] == 0 } {
+		if {$selectparam} {
+			set val [expr [lindex $limit 1] / $nthreads]
+		} else {
+			set val [lindex $limit 1]
+		}
+	} else {
+		set exclusive "#SBATCH --exclusive"
+		set val [lindex $limit 1]
+	}
+
+	make_bash_script $file_in "
+$exclusive
+sleep 10"
+
+	#
+	# Submit n+1 number of jobs but job n+1 should be pending
+	# since it will be past the association limit
+	#
+	set matches 0
+	set time 1
+	for {set inx 0} {$inx <= $val} {incr inx} {
+		if { $inx == $val } {
+			# the n+1'th job gets a longer time limit to avoid
+			# having it prematurely start after _decay_thread() runs
+			# and decays the values of the other running jobs
+			set time $val
+		}
+		set job_id [submit_job -fail "[lindex $limit 0]1 --account=$ta --output=/dev/null --error=/dev/null -t$time $file_in"]
+	}
+
+	#
+	# Wait for squeue to update
+	#
+	sleep 5
+
+	set pending 0
+	set running 0
+	spawn $squeue -A $ta -h -o "\%t \%r"
+	expect {
+		-re "PD." {
+			incr pending
+			exp_continue
+		}
+		-re "R.None" {
+			incr running
+			exp_continue
+		}
+		timeout {
+			slow_kill $mypid
+			fail "squeue not responding [test_info $test_type \"inc21_21_grp_test\"]"
+		}
+		eof {
+			wait
+		}
+	}
+
+	subtest -fail { $pending == 1 && $running == $val } "$test_type limit" "Found $pending jobs pending and $running jobs running while expecting 1 and $val"
+
+	#
+	# Cancel test jobs
+	#
+	spawn $scancel --quiet --account=$ta
+	expect {
+		eof {
+			wait
+		}
+	}
+}
+
+#
+# Supplemental function to test21.21 that test for max/grp
+# submit and jobs
+#
+proc inc21_21_submit_test { limit } {
+
+	global file_in srun sbatch squeue scancel bin_id number bin_sleep is_skip
+	global bin_rm ta maxjob_lim maxsub_lim
+	global acct_mod_desc acct_mod_acct_vals acct_mod_assoc_vals
+	global acct_mod_assoc_test_vals
+
+	set limit_job ""
+	set limit_sub ""
+
+	if { [string compare $limit "grpjobsub"] == 0 &&
+	     [default_part_exclusive] != 0} {
+		log_warn "Unable to perform test with exclusive node allocations"
+		set is_skip 1
+		return
+	}
+
+	if { ![string compare $limit "maxjobsub"] } {
+		set limit_job "maxjob"
+		set limit_sub "maxsubmit"
+
+	} else {
+		set limit_job "grpjob"
+		set limit_sub "grpsubmit"
+	}
+
+
+	set acct_mod_assoc_test_vals($limit_job) \
+	    [lindex $acct_mod_assoc_vals($limit) 0]
+	set acct_mod_assoc_test_vals($limit_sub) \
+	    [lindex $acct_mod_assoc_vals($limit) 1]
+	if [mod_acct $ta [array get acct_mod_desc] \
+				 [array get acct_mod_assoc_test_vals] \
+				 [array get acct_mod_acct_vals]] {
+		fail "Unable to modify account $ta"
+	}
+
+	make_bash_script $file_in "
+	$bin_sleep 10
+	"
+
+	# Test to make sure that the grpsubmit and maxsubmit
+	# are enforced with jobs
+	log_info "==== Test $limit (within: inc21.21_tests function: inc21_21_submit_test) ===="
+
+	# Submit jobs to test the limit set in the association
+	for {set inx 0} {$inx < $acct_mod_assoc_test_vals($limit_sub)} \
+	    {incr inx} {
+		    set job_id($inx) [submit_job -fail "-N1 -n1 --account=$ta --output=/dev/null --error=/dev/null -t5 $file_in"]
+		    if { !$job_id($inx) } {
+			    fail "sbatch didn't return jobid [test_info $limit \"inc21_21_submit_test\"]"
+		    }
+		    # We need to sleep because of the way the scheduler works
+		    # if we don't sleep then we could
+		    sleep 1
+	    }
+
+	# then submit one more over the limit and it should fail
+	set matches 0
+	set mypid [spawn $sbatch -N1 -n1 --account=$ta --output=/dev/null \
+		       --error=/dev/null -t5 $file_in]
+	expect {
+		-re "Job violates accounting/QOS policy" {
+			incr matches
+			log_info "This error is expected, not a problem [test_info $limit \"inc21_21_submit_test\"]"
+			exp_continue
+		}
+		-re "Submitted batch job ($number)" {
+			fail "This job should not have ran [test_info $limit \"inc21_21_submit_test\"]"
+		}
+		-re "Unable to contact" {
+			fail "Slurm appears to be down [test_info $limit \"inc21_21_submit_test\"]"
+		}
+		timeout {
+			slow_kill $mypid
+			fail "sbatch not responding [test_info $limit \"inc21_21_submit_test\"]"
+		}
+		eof {
+			wait
+		}
+	}
+	subtest -fail { $matches == 1 } "Policy violation error detected"
+
+	set matches 0
+	set mypid [spawn $squeue -A$ta -h -o "\%i \%t \%r"]
+	expect {
+		-re "($job_id(2)|$job_id(3)).PD.AssocMaxJobsLimit" {
+			incr matches
+			exp_continue
+		}
+		-re "($job_id(2)|$job_id(3)).PD.AssocGrpJobsLimit" {
+			incr matches
+			exp_continue
+		}
+		-re "($job_id(0)|$job_id(1)).R.None" {
+			incr matches
+			exp_continue
+		}
+		timeout {
+			slow_kill $mypid
+			fail "squeue not responding [test_info $limit \"inc21_21_submit_test\"]"
+		}
+		eof {
+			wait
+		}
+	}
+
+	spawn $scancel --quiet --account=$ta
+	expect {
+		eof {
+			wait
+		}
+	}
+
+	if { [string compare $limit "maxjobsub"] == 0 &&
+             $matches > 0 && $matches < 4 &&
+	     [default_part_exclusive] != 0} {
+		log_warn "Only started $matches of 4 possible jobs"
+	} elseif { $matches != 4 } {
+		fail "Jobs are not in the expected state (expected $matches != 4) [test_info $limit \"inc21_21_submit_test\"]"
+	}
+
+	# Test to make sure that the grpsubmit and maxsubmit
+	# are enforced with job arrays
+
+	log_info "==== Test $limit with job arrays (within: inc21.21_tests function: inc21_21_submit_test) ===="
+
+	# Submit jobs to test the limit set in the association
+	for {set inx 0} {$inx < $acct_mod_assoc_test_vals($limit_sub)} \
+	    {incr inx} {
+		    set job_id($inx) [submit_job -fail "-N1 -a0 --account=$ta --output=/dev/null --error=/dev/null -t5 $file_in"]
+		    if { !$job_id($inx) } {
+			    fail "sbatch didn't return jobid [test_info $limit \"inc21_21_submit_test\"]"
+		    }
+
+		    # We need to sleep because of the way the scheduler works
+		    # if we don't sleep then we could
+		    sleep 1
+	    }
+
+	# then submit one more over the limit and it should fail
+	set mypid [spawn $sbatch -N1 -a0 --account=$ta --output=/dev/null \
+		       --error=/dev/null -t5 $file_in]
+	expect {
+		-re "Job violates accounting/QOS policy" {
+			log_info "\[Job array test\] This error is expected, not a problem [test_info $limit \"inc21_21_submit_test\"]"
+			exp_continue
+		}
+		-re "Submitted batch job ($number)" {
+			fail "\[Job array test\] this job should not have run [test_info $limit \"inc21_21_submit_test\"]"
+		}
+		-re "Unable to contact" {
+			fail "\[Job array test\] slurm appears to be down [test_info $limit \"inc21_21_submit_test\"]"
+		}
+		timeout {
+			slow_kill $mypid
+			fail "\[Job array test\] sbatch not responding [test_info $limit \"inc21_21_submit_test\"]"
+		}
+		eof {
+			wait
+		}
+	}
+
+	set matches 0
+	set mypid [spawn $squeue -A$ta -h -o "\%i \%t \%r"]
+	expect {
+		-re "($job_id(2)|$job_id(3))_\\\[0\\\].PD.AssocMaxJobsLimit" {
+			incr matches
+			exp_continue
+		}
+		-re "($job_id(2)|$job_id(3))_\\\[0\\\].PD.AssocGrpJobsLimit" {
+			incr matches
+			exp_continue
+		}
+		-re "($job_id(0)|$job_id(1))_0.R.None" {
+			incr matches
+			exp_continue
+		}
+		timeout {
+			slow_kill $mypid
+			fail "squeue not responding [test_info $limit \"inc21_21_submit_test\"]"
+		}
+		eof {
+			wait
+		}
+	}
+
+	spawn $scancel --quiet --account=$ta
+	expect {
+		eof {
+			wait
+		}
+	}
+
+	if { [string compare $limit "maxjobsub"] == 0 &&
+             $matches > 0 && $matches < 4 &&
+	     [default_part_exclusive] != 0} {
+		log_warn "Only started $matches of 4 possible jobs"
+	} elseif { $matches != 4 } {
+		fail "Jobs are not in the expected state (expected $matches != 4) [test_info $limit \"inc21_21_submit_test\"]"
+	}
+
+	# Clear the limits
+	set acct_mod_assoc_test_vals($limit_job) "-1"
+	set acct_mod_assoc_test_vals($limit_sub) "-1"
+}
+
+#
+# Function that tests an association's grpwall limit
+#
+proc inc21_21_grpwall { test_type limit } {
+
+	global number bin_id ta srun bin_sleep bin_rm file_in test_qos re_word_str
+	set job_id 0
+	set timeout 120
+
+	log_info "====== Test $test_type within: inc21.21_tests function: inc21_21_grpwall) ======"
+
+	# Wait for old jobs to clean up
+	sleep 2
+
+	# Since wall is a decayed variable lets reset it to make sure the test
+	# gets exactly what we would expect.
+	reset_qos_usage "" $test_qos
+
+	make_bash_script $file_in "
+	$bin_sleep 61
+	"
+
+	set matches 0
+	log_info "Sleeping for a bit...hang tight"
+	spawn $srun -v [lindex $limit 0][lindex $limit 1] --account=$ta \
+	    -I $file_in
+	expect {
+		-re "launching StepId=($number)\\.$re_word_str" {
+			set job_id $expect_out(1,string)
+			incr matches
+			exp_continue
+		}
+		timeout {
+			fail "srun not responding [test_info $test_type \"inc21_21_grpwall\"]"
+		}
+		eof {
+			wait
+		}
+	}
+
+	if {$job_id != 0 && [wait_for_job $job_id "DONE"] != 0} {
+		fail "Job $job_id did not complete [test_info $test_type \"inc21_21_grpwall\"]"
+	}
+
+	if { $matches != 1 } {
+		fail "Job didn't launch with correct limit [test_info $test_type \"inc21_21_grpwall\"]"
+	}
+
+	set matches 0
+	spawn $srun -v [lindex $limit 0][lindex $limit 1] --account=$ta \
+	    -I $bin_id
+	expect {
+		-re "Job violates accounting/QOS policy" {
+			log_info "This error is expected, not a problem [test_info $test_type \"inc21_21_grpwall\"]"
+			exp_continue
+		}
+		-re "launching StepId=($number)\\.$re_word_str" {
+			set job_id $expect_out(1,string)
+			fail "Job should not have run [test_info $test_type \"inc21_21_grpwall\"]"
+		}
+		timeout {
+			fail "srun not responding [test_info $test_type \"inc21_21_grpwall\"]"
+		}
+		eof {
+			wait
+		}
+	}
+
+	if {$job_id != 0 && [wait_for_job $job_id "DONE"] != 0} {
+		fail "Job $job_id did not complete [test_info $test_type \"inc21_21_grpwall\"]"
+	}
+}

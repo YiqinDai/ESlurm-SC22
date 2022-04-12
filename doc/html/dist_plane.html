@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width" />
+
+	<title>Slurm Workload Manager - Plane distribution</title>
+	<link rel="canonical" href="https://slurm.schedmd.com/dist_plane.html" />
+
+	<link rel="shortcut icon" href="favicon.ico" />
+
+	<link rel="stylesheet" type="text/css" href="fonts.css" />
+	<link rel="stylesheet" type="text/css" href="reset.css" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="slurm.css" />
+
+	<script src="jquery.min.js"></script>
+	<script type="text/javascript">
+	jQuery(document).ready(function() {
+		jQuery('.menu-trigger').bind('click touchstart', function() {
+			jQuery(this).find('.menu-trigger__lines').toggleClass('menu-trigger__lines--closed');
+			jQuery(this).parents('.site-header').find('.site-nav').toggleClass('site-nav--active');
+
+			return false;
+		});
+	});
+
+	(function() {
+	  var cx = '011890816164765777536:jvrtxrd3f0w';
+	  var gcse = document.createElement('script');
+	  gcse.type = 'text/javascript';
+	  gcse.async = true;
+	  gcse.src = 'https://cse.google.com/cse.js?cx=' + cx;
+	  var s = document.getElementsByTagName('script')[0];
+	  s.parentNode.insertBefore(gcse, s);
+	})();
+	</script>
+</head>
+
+<body>
+
+<div class="container container--main">
+
+	<header class="site-header" role="banner">
+
+		<div class="site-masthead">
+			<h1 class="site-masthead__title site-masthead__title--slurm">
+				<a href="/" rel="home">
+					<span class="slurm-logo">Slurm Workload Manager</span>
+				</a>
+			</h1>
+			<div class="site-masthead__title">
+				<a href="https://www.schedmd.com/" rel="home">
+					<span class="site-logo">SchedMD</span>
+				</a>
+			</div>
+
+			<button class="site-masthead__trigger menu-trigger" type="button" role="button" aria-label="Toggle Navigation"><span class="menu-trigger__lines"></span></button>
+		</div>
+
+
+		<nav class="site-nav">
+			<h2 class="site-nav__title">Navigation</h2>
+
+			<div class="slurm-title">
+				<div class="slurm-logo"><a href="/">Slurm Workload Manager</a></div>
+				<div class="slurm-title__version">Version 20.11</div>
+			</div>
+
+			<ul class="site-nav__menu site-menu menu" role="navigation">
+				<li class="site-menu__item">
+				        <div>About</div>
+					<ul>
+						<li><a href="overview.html">Overview</a></li>
+						<li><a href="news.html">Release Notes</a></li>
+						<li><a href="team.html">Slurm Team</a></li>
+						<li><a href="meetings.html">Meetings</a></li>
+						<li><a href="testimonials.html">Testimonials</a></li>
+						<li><a href="disclaimer.html">Legal Notices</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Using</div>
+					<ul>
+						<li><a href="tutorials.html">Tutorials</a></li>
+						<li><a href="documentation.html">Documentation</a></li>
+						<li><a href="faq.html">FAQ</a></li>
+						<li><a href="publications.html">Publications</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Installing</div>
+					<ul>
+						<li><a href="download.html">Download</a></li>
+						<li><a href="quickstart_admin.html">Installation Guide</a></li>
+					</ul>
+				</li>
+				<li class="site-menu__item">
+					<div>Getting Help</div>
+					<ul>
+						<li><a href="https://www.schedmd.com/services.php">Support</a></li>
+						<li><a href="mail.html">Mailing Lists</a></li>
+						<li><a href="https://www.schedmd.com/services.php">Training</a></li>
+						<li><a href="troubleshoot.html">Troubleshooting</a></li>
+					</ul>
+				</li>
+			</ul>
+
+		</nav>
+
+	</header>
+
+	<div class="content" role="main">
+		<section class="slurm-search">
+			<div class="container" id="cse">
+				<gcse:search></gcse:search>
+			</div>
+		</section>
+
+		<div class="section">
+			<div class="container">
+
+
+<h1><a name="top">Plane distribution: <i>-m plane=plane_size</i></a></h1>
+
+<p>The plane distribution allocates tasks in blocks of size
+<i>plane_size</i> in a round-robin fashion across allocated nodes.
+
+<p>To specify the plane distribution add to the srun command line
+<i>--distribution=plane=plane_size</i> or <i>-m plane=plane_size</i>
+where <i>plane_size</i> is the requested plane/block size.
+
+<h2>Examples of plane distributions</h2>
+
+<p>In the examples below we assume we have 21 tasks and that the
+task list is: 0, 1, 2, 3, 4, ..., 19, 20.
+
+<p>On <u>one (1)</u> node: <i>srun -N 1-1 -n 21 -m plane=4 <...></i>.
+
+<p>Even though the user specified a <i>plane_size</i> of 4 the final plane
+distribution results in a <i>plane_size</i> of 21, since all the tasks landed
+on one node.
+
+<p>
+<center>
+<img src="plane_ex1.gif">
+<p>Figure 1: Process layout for <i>srun -N 1-1 -n 21 -m plane=4 <...></i>
+</center>
+<br>
+<p>On <u>four (4)</u> nodes: <i>srun -N 4-4 -n 21 -m plane=4 <...></i>.
+
+<p>The plane distribution with a <i>plane_size</i> of 4 results in the
+following allocation of the task ids:
+
+<p>
+<center>
+<img src="plane_ex2.gif">
+<p>Figure 2: Process layout for <i>srun -N 4-4 -n 21 -m plane=4 <...> </i>
+</center>
+<br>
+<p>On <u>four (4)</u> nodes: <i>srun -N 4-4 -n 21 -m plane=2 <...>
+</i>.
+
+<p>The plane distribution with a <i>plane_size</i> of 2 results in the
+following allocation of the task ids:
+
+<p>
+<center>
+<img src="plane_ex3.gif">
+<p>Figure 3: Process layout for <i>srun -N 4-4 -n 21 -m plane=2 <...></i>
+</center>
+
+
+<h2>Plane distribution and task affinity</h2>
+
+<p>The concept behind this distribution is to divide the clusters into
+planes. Each plane includes a number of the lowest level of logical
+processors (CPU, cores, threads depending on the architecture) on each
+node. We then schedule within each plane first and then across planes.
+
+<p>We ensure that the processes are located correctly by setting the
+process affinity to the specified/appropriate logical processor. Process
+affinity is available in Slurm when the task/affinity plug-in is
+enabled.
+
+<p>On a dual-processor node with quad-core processors (see figure 4)
+the plane distribution results in:
+
+<ul>
+<li>One plane if the <i>plane_size=8</i>. In this case the processors are
+scheduled by first filling up the nodes and then scheduled across the
+nodes.</li>
+<li>Eight planes if the <i>plane_size=1</i>. In this case we would always
+schedule across the node first.</li>
+</ul>
+
+<p>
+<center>
+<img src="plane_ex4.gif">
+<p>Figure 4: Quad-core dual-processor system
+</center>
+<br>
+<p>In a multi-core/hyper-threaded environment, two planes would
+provide better locality but potentially more contention for other
+resources.
+
+<p>On the other hand, four planes (scheduling across processors) would
+minimize contention for cache and memory.
+
+
+<h3>Examples of plane distributions with process
+affinity enabled</h3>
+
+<p>In the examples below we assume we have 21 tasks and that the
+task list is: 0, 1, 2, 3, 4, ..., 19, 20.
+
+<p>On <u>one (1)</u> node:
+<i>srun -N 1-1 -n 21 -m plane=4 --cpu-bind=core <...></i>.
+Even though the user specified a <i>plane_size</i> of 4 the final plane
+distribution results in a plane distribution with <i>plane_size=8</i>.
+
+<p>
+<center>
+<img src="plane_ex5.gif">
+<p>Figure 5: Process layout for
+<i>srun -N 1-1 -n 21 -m plane=4 --cpu-bind=core <...></i>.
+</center>
+<br>
+<p>On <u>four (4)</u> nodes:
+<i>srun -N 4-4 -n 21 -m plane=4 --cpu-bind=core <...></i>.
+The plane distribution with a <i>plane_size</i> of 4 results in the
+following allocation of the task ids:
+
+<p>
+<center>
+<img src="plane_ex6.gif" width=600>
+<p>Figure 6: Process layout for
+<i>srun -N 4-4 -n 21 -m plane=4 --cpu-bind=core <...></i>.
+</center>
+<br>
+<p>On <u>four (4)</u> nodes:
+<i>srun -N 4-4 -n 21 -m plane=2 --cpu-bind=core <...>
+</i>. The plane distribution with a <i>plane_size</i> of 2 results in the
+following allocation of the task ids:
+
+<p>
+<center>
+<img src="plane_ex7.gif" width=600>
+<p>Figure 7: Process layout for
+<i>srun -N 4-4 -n 21 -m plane=2 --cpu-bind=core <...></i>.
+</center>
+<br>
+
+<p style="text-align:center;">Last modified 22 April 2021</p>
+
+			</div> <!-- END .container -->
+		</div> <!-- END .section -->
+	</div> <!-- END .content -->
+</div> <!-- END .main -->
+
+<footer class="site-footer" role="contentinfo">
+	<nav class="footer-nav section">
+		<div class="container">
+			<p><a href="disclaimer.html" target="_blank" class="privacy">Legal Notices</a></p>
+		</div>
+	</nav>
+</footer>
+
+<script type='text/javascript'>
+	var custpagename = window.location.href;
+	var urlarray = custpagename.split('#');
+	custpagename = urlarray[1];
+
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+		(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+				})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+			 ga('create', 'UA-47927131-1', 'schedmd.com');
+		ga('send', {'hitType': 'pageview', 'page': custpagename, 'title': custpagename});
+</script>
+
+</body>
+</html>
+

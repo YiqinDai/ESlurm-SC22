@@ -1,0 +1,101 @@
+#!/usr/bin/env expect
+############################################################################
+# Purpose: Test of Slurm functionality
+#          bjobs wrapper test
+############################################################################
+# Copyright (C) 2011-2016 SchedMD LLC
+# Written by Alejandro Sanchez <alex@schedmd.com>
+#
+# This file is part of Slurm, a resource management program.
+# For details, see <https://slurm.schedmd.com/>.
+# Please also read the included file: DISCLAIMER.
+#
+# Slurm is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# Slurm is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along
+# with Slurm; if not, write to the Free Software Foundation, Inc.
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+############################################################################
+source ./globals
+
+set file_in     "test$test_id.input"
+set job_id      0
+
+if {[file executable $sbatch] == 0} {
+	skip "$sbatch does not exist"
+}
+
+if {[file executable $bjobs] == 0} {
+	skip "$bjobs does not exist"
+}
+
+proc cleanup {} {
+	global bin_rm file_in job_id
+
+	cancel_job $job_id
+	exec $bin_rm -f $file_in
+}
+
+spawn $bjobs
+expect {
+	-re "No unfinished job found" {
+		exp_continue
+	}
+	-re "Problem loading jobs" {
+		fail "Problem loading jobs"
+	}
+	timeout {
+		fail "bjobs not responding"
+	}
+	eof {
+		wait
+	}
+}
+
+
+#
+# Submit a slurm job
+#
+exec $bin_rm -f $file_in
+make_bash_script $file_in "
+  $bin_sleep 10
+"
+
+spawn $sbatch -N1 -o /dev/null -t1 $file_in
+expect {
+        -re "Submitted batch job ($number)" {
+                set job_id $expect_out(1,string)
+                exp_continue
+        }
+        timeout {
+                fail "sbatch not responding"
+        }
+        eof {
+                wait
+        }
+}
+if { $job_id == 0 } {
+        fail "Failed to submit job"
+}
+
+if {[string length $job_id] > 7} {
+        fail "Jobid is longer than 7 characters"
+}
+
+#
+# Test bjobs <jobid> wrapper
+#
+if [wait_for -pollinterval .1 -timeout 2 {$matches == 1} {
+	set matches [regexp $job_id [run_command_output "$bjobs $job_id"]]
+}] {
+	fail "bjobs $job_id does not work"
+}
+
